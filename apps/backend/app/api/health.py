@@ -1,9 +1,14 @@
 from fastapi import APIRouter, Response, status
 
+from app.repositories.postgres import PostgresRepository
+from app.repositories.redis import RedisRepository
 from app.services.health_service import HealthService
 
 router = APIRouter(prefix="/health", tags=["health"])
-health_service = HealthService()
+health_service = HealthService(
+    postgres_repository=PostgresRepository(),
+    redis_repository=RedisRepository(),
+)
 
 
 @router.get("/live")
