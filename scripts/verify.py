@@ -20,10 +20,9 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
-
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DOTENV_PATH = ROOT_DIR / ".env"
@@ -38,6 +37,7 @@ REQUIRED_ENV_VARS = {
 # ---------------------------
 # Helpers / output formatting
 # ---------------------------
+
 
 def print_check(name: str, ok: bool, details: str) -> None:
     status = "PASS" if ok else "FAIL"
@@ -85,6 +85,7 @@ def redact_secrets(text: str) -> str:
 # ---------------------------
 # .env loading + env validation
 # ---------------------------
+
 
 def load_dotenv(path: Path) -> int:
     """Load key/value pairs from .env into process env without overriding already-set vars."""
@@ -140,7 +141,8 @@ def validate_required_env(required: dict[str, str]) -> tuple[bool, str]:
 # API health check
 # ---------------------------
 
-def check_api_health(url: str, timeout_s: float, hint: Optional[str] = None) -> tuple[bool, str]:
+
+def check_api_health(url: str, timeout_s: float, hint: str | None = None) -> tuple[bool, str]:
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
 
     try:
@@ -170,6 +172,7 @@ def check_api_health(url: str, timeout_s: float, hint: Optional[str] = None) -> 
 # DB connectivity checks
 # ---------------------------
 
+
 @dataclass(frozen=True)
 class DbMethodResult:
     ok: bool
@@ -193,7 +196,8 @@ def _check_db_with_psycopg(database_url: str, timeout_s: float) -> DbMethodResul
                 cursor.fetchone()
         return DbMethodResult(True, "Connected to PostgreSQL with psycopg and executed SELECT 1.")
     except Exception as exc:
-        return DbMethodResult(False, redact_secrets(f"Failed to connect/query PostgreSQL with psycopg: {exc}"))
+        details = f"Failed to connect/query PostgreSQL with psycopg: {exc}"
+        return DbMethodResult(False, redact_secrets(details))
 
 
 def _check_db_with_psycopg2(database_url: str, timeout_s: float) -> DbMethodResult:
@@ -212,7 +216,8 @@ def _check_db_with_psycopg2(database_url: str, timeout_s: float) -> DbMethodResu
             conn.close()
         return DbMethodResult(True, "Connected to PostgreSQL with psycopg2 and executed SELECT 1.")
     except Exception as exc:
-        return DbMethodResult(False, redact_secrets(f"Failed to connect/query PostgreSQL with psycopg2: {exc}"))
+        details = f"Failed to connect/query PostgreSQL with psycopg2: {exc}"
+        return DbMethodResult(False, redact_secrets(details))
 
 
 def _check_db_with_psql(database_url: str, timeout_s: float) -> DbMethodResult:
@@ -236,13 +241,14 @@ def _check_db_with_psql(database_url: str, timeout_s: float) -> DbMethodResult:
 
     err = (result.stderr or "").strip()
     details = err if err else f"psql returned code {result.returncode}."
-    return DbMethodResult(False, redact_secrets(f"Failed to connect/query PostgreSQL with psql: {details}"))
+    message = f"Failed to connect/query PostgreSQL with psql: {details}"
+    return DbMethodResult(False, redact_secrets(message))
 
 
 def check_database_connection(
     database_url: str,
     timeout_s: float,
-    hint: Optional[str] = None,
+    hint: str | None = None,
 ) -> tuple[bool, str]:
     methods: list[tuple[str, DbCheckFn]] = [
         ("psycopg", _check_db_with_psycopg),
@@ -251,7 +257,7 @@ def check_database_connection(
     ]
 
     unavailable: list[str] = []
-    for name, fn in methods:
+    for _name, fn in methods:
         res = fn(database_url, timeout_s)
         if not res.attempted:
             unavailable.append(res.details)
@@ -287,6 +293,7 @@ def check_database_connection(
 # Formatting and lint checks
 # ---------------------------
 
+
 def _tail_lines(text: str, limit: int = 20) -> str:
     lines = [line for line in text.splitlines() if line.strip()]
     if len(lines) <= limit:
@@ -298,7 +305,8 @@ def check_format_and_lint(timeout_s: float) -> tuple[bool, str]:
     if not shutil.which("pre-commit"):
         return (
             False,
-            "pre-commit is not installed. Install it with `pip install pre-commit` and run `pre-commit install`.",
+            "pre-commit is not installed. "
+            "Install it with `pip install pre-commit` and run `pre-commit install`.",
         )
 
     try:
@@ -326,12 +334,18 @@ def check_format_and_lint(timeout_s: float) -> tuple[bool, str]:
 # Main
 # ---------------------------
 
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Verify local dev setup for this repository.")
     p.add_argument("--skip-style", action="store_true", help="Skip formatting and lint checks.")
     p.add_argument("--skip-api", action="store_true", help="Skip the API health endpoint check.")
     p.add_argument("--skip-db", action="store_true", help="Skip the database connectivity check.")
-    p.add_argument("--timeout", type=float, default=5.0, help="Timeout (seconds) for network/DB checks.")
+    p.add_argument(
+        "--timeout",
+        type=float,
+        default=5.0,
+        help="Timeout (seconds) for network/DB checks.",
+    )
     p.add_argument(
         "--services-hint",
         default="docker compose up -d",
@@ -371,7 +385,11 @@ def main(argv: list[str]) -> int:
         print_check("API health endpoint", True, "Skipped (--skip-api).")
     else:
         api_url = os.environ["API_HEALTH_URL"]
-        api_ok, api_details = check_api_health(api_url, timeout_s=args.timeout, hint=args.services_hint)
+        api_ok, api_details = check_api_health(
+            api_url,
+            timeout_s=args.timeout,
+            hint=args.services_hint,
+        )
         print_check("API health endpoint", api_ok, api_details)
         all_ok = all_ok and api_ok
 
