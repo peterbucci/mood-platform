@@ -13,7 +13,6 @@ mood-platform/
 |- scripts/          # repository utility scripts
 |- .env.example
 |- Makefile
-|- MONOREPO.md
 `- README.md
 ```
 
@@ -50,40 +49,8 @@ Run from repository root unless explicitly noted.
 - `python scripts/verify.py --timeout 10`:
   uses a custom timeout for service checks
 
-## Command Scope
-
-- Root-level commands:
-  repository-wide tooling, verification, and standards checks
-- App-level commands:
-  app-specific run/test commands (from `apps/frontend` or `apps/backend` once app code is added)
-
-## Tooling and Code Style
-
-- `.editorconfig` defines base editor behavior for all files.
-- Formatting/linting standards are defined at the repository root so both apps follow the same rules.
-- Pre-commit hooks enforce formatting and lint checks on each commit.
-
-### Pre-commit Usage
-
-- Install hooks once per clone: `pre-commit install`
-- Run all hooks manually: `pre-commit run --all-files`
-- Update hook versions intentionally: `pre-commit autoupdate`
-
-## Quick Sanity Checks
-
-1. Environment-only verification:
-   - command: `make verify-env`
-   - expected: `Environment variables` prints `PASS` when all required values are set
-2. Lint/format verification:
-   - command: `make check`
-   - expected: all hooks print `Passed`
-3. Full repository verification:
-   - command: `make verify`
-   - expected: `Formatting and linting`, `Environment variables`, `API health endpoint`, and `Database connection` all print `PASS`
-
 ## Documentation
 
-- `MONOREPO.md`: high-level repository scaffold
 - `docs/README.md`: documentation entry point
 - `apps/frontend/README.md`: frontend scope and responsibilities
 - `apps/backend/README.md`: backend scope and responsibilities
