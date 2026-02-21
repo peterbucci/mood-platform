@@ -25,6 +25,7 @@ mood-platform/
    - `Copy-Item .env.example .env` (PowerShell)
 3. Install developer tooling:
    - `pip install pre-commit`
+   - `npm install`
    - `pre-commit install`
 4. Start local services (when defined in compose):
    - `docker compose up -d`
@@ -37,9 +38,15 @@ mood-platform/
 Run from repository root unless explicitly noted.
 
 - `make verify`:
-  validates required env vars, API health endpoint, and DB connectivity
+  runs formatting/lint hooks, validates required env vars, and checks API + DB
+- `make verify-env`:
+  validates env vars only (no style checks, API, or DB)
+- `make check`:
+  runs all pre-commit hooks across the repository
+- `npm run check`:
+  runs prettier and lint scripts from root `package.json`
 - `python scripts/verify.py --skip-api --skip-db`:
-  validates environment only
+  runs style + env checks only
 - `python scripts/verify.py --timeout 10`:
   uses a custom timeout for service checks
 
@@ -61,6 +68,18 @@ Run from repository root unless explicitly noted.
 - Install hooks once per clone: `pre-commit install`
 - Run all hooks manually: `pre-commit run --all-files`
 - Update hook versions intentionally: `pre-commit autoupdate`
+
+## Quick Sanity Checks
+
+1. Environment-only verification:
+   - command: `make verify-env`
+   - expected: `Environment variables` prints `PASS` when all required values are set
+2. Lint/format verification:
+   - command: `make check`
+   - expected: all hooks print `Passed`
+3. Full repository verification:
+   - command: `make verify`
+   - expected: `Formatting and linting`, `Environment variables`, `API health endpoint`, and `Database connection` all print `PASS`
 
 ## Documentation
 

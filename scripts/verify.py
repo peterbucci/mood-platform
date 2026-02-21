@@ -4,6 +4,7 @@ Repository verification checks for local development.
 
 What this script does:
 - Loads .env (without overriding existing shell env)
+- Runs repository formatting/lint checks via pre-commit
 - Validates required env vars
 - Optionally checks API health endpoint
 - Optionally checks database connectivity (psycopg / psycopg2 / psql)
@@ -283,11 +284,51 @@ def check_database_connection(
 
 
 # ---------------------------
+# Formatting and lint checks
+# ---------------------------
+
+def _tail_lines(text: str, limit: int = 20) -> str:
+    lines = [line for line in text.splitlines() if line.strip()]
+    if len(lines) <= limit:
+        return "\n".join(lines)
+    return "\n".join(lines[-limit:])
+
+
+def check_format_and_lint(timeout_s: float) -> tuple[bool, str]:
+    if not shutil.which("pre-commit"):
+        return (
+            False,
+            "pre-commit is not installed. Install it with `pip install pre-commit` and run `pre-commit install`.",
+        )
+
+    try:
+        result = subprocess.run(
+            ["pre-commit", "run", "--all-files"],
+            capture_output=True,
+            text=True,
+            timeout=max(30, int(timeout_s * 30)),
+            check=False,
+        )
+    except Exception as exc:
+        return False, f"Failed to execute pre-commit checks: {exc}"
+
+    if result.returncode == 0:
+        return True, "pre-commit formatting and lint hooks passed."
+
+    combined_output = "\n".join(part for part in [result.stdout, result.stderr] if part).strip()
+    if not combined_output:
+        combined_output = "pre-commit failed without output."
+    details = _tail_lines(combined_output, limit=25)
+    return False, f"pre-commit reported issues:\n{details}"
+
+
+# ---------------------------
 # Main
 # ---------------------------
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Verify local dev setup for this repository.")
+    p.add_argument("--skip-style", action="store_true", help="Skip formatting and lint checks.")
     p.add_argument("--skip-api", action="store_true", help="Skip the API health endpoint check.")
     p.add_argument("--skip-db", action="store_true", help="Skip the database connectivity check.")
     p.add_argument("--timeout", type=float, default=5.0, help="Timeout (seconds) for network/DB checks.")
@@ -310,14 +351,21 @@ def main(argv: list[str]) -> int:
     else:
         print("No .env file found. Using existing shell environment values only.\n")
 
+    all_ok = True
+
+    if args.skip_style:
+        print_check("Formatting and linting", True, "Skipped (--skip-style).")
+    else:
+        style_ok, style_details = check_format_and_lint(timeout_s=args.timeout)
+        print_check("Formatting and linting", style_ok, style_details)
+        all_ok = all_ok and style_ok
+
     env_ok, env_details = validate_required_env(REQUIRED_ENV_VARS)
     print_check("Environment variables", env_ok, env_details)
     if not env_ok:
         print("\nVerification completed.")
         print("Result: FAIL")
         return 1
-
-    all_ok = True
 
     if args.skip_api:
         print_check("API health endpoint", True, "Skipped (--skip-api).")
