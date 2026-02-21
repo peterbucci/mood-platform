@@ -20,9 +20,29 @@ This project is a single-owner, self-hostable system for:
 
 ## Quick Start (Baseline)
 
-1. Copy `.env.example` to `.env` once available.
+1. Copy `.env.example` to `.env`.
 2. Start services with `docker compose up`.
-3. Run verification with `make verify` (or project equivalent) when added.
+3. Run verification with `make verify`.
+
+## Verification
+
+Run:
+
+```bash
+make verify
+```
+
+If `make` is not available on your machine, run:
+
+```bash
+python scripts/verify.py
+```
+
+The verification script will:
+
+- validate required environment variables and clearly list any missing ones
+- call the configured API health endpoint
+- verify database connectivity by executing `SELECT 1`
 
 ## Repository Baseline Files
 
