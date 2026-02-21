@@ -6,15 +6,15 @@ Single-owner, self-hostable mood platform monorepo.
 
 ```text
 mood-platform/
-├─ apps/
-│  ├─ frontend/      # Expo frontend app (scaffold)
-│  └─ backend/       # FastAPI backend app (scaffold)
-├─ docs/             # architecture and developer docs
-├─ scripts/          # repository utility scripts
-├─ .env.example
-├─ Makefile
-├─ MONOREPO.md
-└─ README.md
+|- apps/
+|  |- frontend/      # Expo frontend app (scaffold)
+|  `- backend/       # FastAPI backend app (scaffold)
+|- docs/             # architecture and developer docs
+|- scripts/          # repository utility scripts
+|- .env.example
+|- Makefile
+|- MONOREPO.md
+`- README.md
 ```
 
 ## Quick Start
@@ -23,9 +23,12 @@ mood-platform/
 2. Copy environment variables:
    - `cp .env.example .env` (macOS/Linux)
    - `Copy-Item .env.example .env` (PowerShell)
-3. Start local services (when defined in compose):
+3. Install developer tooling:
+   - `pip install pre-commit`
+   - `pre-commit install`
+4. Start local services (when defined in compose):
    - `docker compose up -d`
-4. Run repository verification:
+5. Run repository verification:
    - `make verify`
    - fallback: `python scripts/verify.py`
 
@@ -51,7 +54,13 @@ Run from repository root unless explicitly noted.
 
 - `.editorconfig` defines base editor behavior for all files.
 - Formatting/linting standards are defined at the repository root so both apps follow the same rules.
-- Pre-commit hooks will enforce formatting and lint checks on each commit.
+- Pre-commit hooks enforce formatting and lint checks on each commit.
+
+### Pre-commit Usage
+
+- Install hooks once per clone: `pre-commit install`
+- Run all hooks manually: `pre-commit run --all-files`
+- Update hook versions intentionally: `pre-commit autoupdate`
 
 ## Documentation
 
