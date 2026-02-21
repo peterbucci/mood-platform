@@ -1,0 +1,22 @@
+{
+  "name": "mood-platform",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md,yml,yaml,css,html}\"",
+    "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,md,yml,yaml,css,html}\"",
+    "lint:frontend": "eslint \"apps/frontend/**/*.{js,jsx}\" --max-warnings=0 --no-error-on-unmatched-pattern",
+    "lint:backend": "ruff check apps/backend scripts",
+    "lint": "npm run lint:frontend && npm run lint:backend",
+    "check": "npm run format:check && npm run lint"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.19.0",
+    "eslint": "9.19.0",
+    "prettier": "3.4.2"
+  }
+}
