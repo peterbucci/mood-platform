@@ -1,8 +1,7 @@
 import os
 
 import psycopg
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Response, status
 from redis import Redis
 
 app = FastAPI(title="Mood Platform API")
@@ -37,7 +36,7 @@ def health_live() -> dict[str, str]:
 
 
 @app.get("/health/ready")
-def health_ready() -> JSONResponse | dict[str, object]:
+def health_ready(response: Response) -> dict[str, object]:
     database_url = os.getenv("DATABASE_URL", "").strip()
     redis_url = os.getenv("REDIS_URL", "").strip()
 
@@ -59,4 +58,5 @@ def health_ready() -> JSONResponse | dict[str, object]:
     if is_ready:
         return {"status": "ready", "checks": checks}
 
-    return JSONResponse(status_code=503, content={"status": "not_ready", "checks": checks})
+    response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return {"status": "not_ready", "checks": checks}

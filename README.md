@@ -26,7 +26,7 @@ mood-platform/
    - `pip install pre-commit`
    - `npm install`
    - `pre-commit install`
-4. Start local services (when defined in compose):
+4. Start local services:
    - `docker compose up -d`
 5. Run repository verification:
    - `make verify`
@@ -57,23 +57,6 @@ Reset services and volumes:
 ```bash
 docker compose down -v
 ```
-
-## Development Commands
-
-Run from repository root unless explicitly noted.
-
-- `make verify`:
-  runs formatting/lint hooks, validates required env vars, and checks API + DB
-- `make verify-env`:
-  validates env vars only (no style checks, API, or DB)
-- `make check`:
-  runs all pre-commit hooks across the repository
-- `npm run check`:
-  runs prettier and lint scripts from root `package.json`
-- `python scripts/verify.py --skip-api --skip-db`:
-  runs style + env checks only
-- `python scripts/verify.py --timeout 10`:
-  uses a custom timeout for service checks
 
 ## Documentation
 
