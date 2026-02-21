@@ -1,14 +1,20 @@
 import os
+from typing import Protocol
 
-from app.repositories.postgres import PostgresRepository
-from app.repositories.redis import RedisRepository
+
+class PostgresReadinessRepository(Protocol):
+    def check_connection(self, database_url: str) -> str: ...
+
+
+class RedisReadinessRepository(Protocol):
+    def check_connection(self, redis_url: str) -> str: ...
 
 
 class HealthService:
     def __init__(
         self,
-        postgres_repository: PostgresRepository,
-        redis_repository: RedisRepository,
+        postgres_repository: PostgresReadinessRepository,
+        redis_repository: RedisReadinessRepository,
     ) -> None:
         self._postgres_repository = postgres_repository
         self._redis_repository = redis_repository
