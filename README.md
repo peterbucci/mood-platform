@@ -32,6 +32,32 @@ mood-platform/
    - `make verify`
    - fallback: `python scripts/verify.py`
 
+## Local Development (Docker)
+
+Run the local stack (Postgres, Redis, API):
+
+```bash
+docker compose up --build
+```
+
+Check readiness:
+
+```bash
+curl http://localhost:8000/health/ready
+```
+
+Stop services:
+
+```bash
+docker compose down
+```
+
+Reset services and volumes:
+
+```bash
+docker compose down -v
+```
+
 ## Development Commands
 
 Run from repository root unless explicitly noted.
