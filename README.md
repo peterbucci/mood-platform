@@ -1,52 +1,56 @@
 # mood-platform
 
-Baseline repository for the rebuilt mood platform.
+Single-owner, self-hostable mood platform monorepo.
 
-## Overview
+## Repository Structure
 
-This project is a single-owner, self-hostable system for:
-
-- capturing mood entries
-- enriching them with Fitbit-derived features
-- storing versioned, ML-ready data
-
-## Planned Stack
-
-- FastAPI (backend API)
-- PostgreSQL (primary database)
-- Redis (queue/cache)
-- Expo (mobile client)
-- Docker Compose (local orchestration)
-
-## Quick Start (Baseline)
-
-1. Copy `.env.example` to `.env`.
-2. Start services with `docker compose up`.
-3. Run verification with `make verify`.
-
-## Verification
-
-Run:
-
-```bash
-make verify
+```text
+mood-platform/
+|- apps/
+|  |- frontend/      # Expo frontend app (scaffold)
+|  `- backend/       # FastAPI backend app (scaffold)
+|- docs/             # architecture and developer docs
+|- scripts/          # repository utility scripts
+|- .env.example
+|- Makefile
+`- README.md
 ```
 
-If `make` is not available on your machine, run:
+## Quick Start
 
-```bash
-python scripts/verify.py
-```
+1. Clone the repository.
+2. Copy environment variables:
+   - `cp .env.example .env` (macOS/Linux)
+   - `Copy-Item .env.example .env` (PowerShell)
+3. Install developer tooling:
+   - `pip install pre-commit`
+   - `npm install`
+   - `pre-commit install`
+4. Start local services (when defined in compose):
+   - `docker compose up -d`
+5. Run repository verification:
+   - `make verify`
+   - fallback: `python scripts/verify.py`
 
-The verification script will:
+## Development Commands
 
-- validate required environment variables and clearly list any missing ones
-- call the configured API health endpoint
-- verify database connectivity by executing `SELECT 1`
+Run from repository root unless explicitly noted.
 
-## Repository Baseline Files
+- `make verify`:
+  runs formatting/lint hooks, validates required env vars, and checks API + DB
+- `make verify-env`:
+  validates env vars only (no style checks, API, or DB)
+- `make check`:
+  runs all pre-commit hooks across the repository
+- `npm run check`:
+  runs prettier and lint scripts from root `package.json`
+- `python scripts/verify.py --skip-api --skip-db`:
+  runs style + env checks only
+- `python scripts/verify.py --timeout 10`:
+  uses a custom timeout for service checks
 
-- `README.md`
-- `LICENSE`
-- `.gitignore`
-- `.editorconfig`
+## Documentation
+
+- `docs/README.md`: documentation entry point
+- `apps/frontend/README.md`: frontend scope and responsibilities
+- `apps/backend/README.md`: backend scope and responsibilities
