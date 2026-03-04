@@ -40,6 +40,10 @@ class FeatureSetMixin:
         nullable=False,
         server_default=sa.text("now()"),
     )
+    extractor_version: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    window_start: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+    window_end: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+    source_timezone: Mapped[str] = mapped_column(sa.Text, nullable=False)
 
 
 class PersonalFeatures(FeatureSetMixin, Base):
@@ -50,6 +54,7 @@ class PersonalFeatures(FeatureSetMixin, Base):
             "user_id",
             sa.text("captured_at DESC"),
         ),
+        sa.Index("ix_personal_features_extractor_version", "extractor_version"),
     )
 
     age_years: Mapped[int | None] = mapped_column(sa.Integer)
@@ -63,6 +68,7 @@ class DailyFeatures(FeatureSetMixin, Base):
     __tablename__ = "daily_features"
     __table_args__ = (
         sa.Index("ix_daily_features_user_captured_at_desc", "user_id", sa.text("captured_at DESC")),
+        sa.Index("ix_daily_features_extractor_version", "extractor_version"),
     )
 
     water_ml: Mapped[int | None] = mapped_column(sa.Integer)
@@ -74,6 +80,7 @@ class SleepFeatures(FeatureSetMixin, Base):
     __tablename__ = "sleep_features"
     __table_args__ = (
         sa.Index("ix_sleep_features_user_captured_at_desc", "user_id", sa.text("captured_at DESC")),
+        sa.Index("ix_sleep_features_extractor_version", "extractor_version"),
     )
 
     total_sleep_minutes: Mapped[int | None] = mapped_column(sa.Integer)
@@ -85,6 +92,7 @@ class StepsFeatures(FeatureSetMixin, Base):
     __tablename__ = "steps_features"
     __table_args__ = (
         sa.Index("ix_steps_features_user_captured_at_desc", "user_id", sa.text("captured_at DESC")),
+        sa.Index("ix_steps_features_extractor_version", "extractor_version"),
     )
 
     steps_count: Mapped[int | None] = mapped_column(sa.Integer)
@@ -100,6 +108,7 @@ class ExerciseFeatures(FeatureSetMixin, Base):
             "user_id",
             sa.text("captured_at DESC"),
         ),
+        sa.Index("ix_exercise_features_extractor_version", "extractor_version"),
     )
 
     active_minutes: Mapped[int | None] = mapped_column(sa.Integer)
@@ -111,6 +120,7 @@ class HrFeatures(FeatureSetMixin, Base):
     __tablename__ = "hr_features"
     __table_args__ = (
         sa.Index("ix_hr_features_user_captured_at_desc", "user_id", sa.text("captured_at DESC")),
+        sa.Index("ix_hr_features_extractor_version", "extractor_version"),
     )
 
     avg_bpm: Mapped[int | None] = mapped_column(sa.Integer)
@@ -126,6 +136,7 @@ class RestingHrFeatures(FeatureSetMixin, Base):
             "user_id",
             sa.text("captured_at DESC"),
         ),
+        sa.Index("ix_resting_hr_features_extractor_version", "extractor_version"),
     )
 
     resting_bpm: Mapped[int | None] = mapped_column(sa.Integer)
@@ -140,6 +151,7 @@ class CalorieFeatures(FeatureSetMixin, Base):
             "user_id",
             sa.text("captured_at DESC"),
         ),
+        sa.Index("ix_calorie_features_extractor_version", "extractor_version"),
     )
 
     calories_consumed_kcal: Mapped[int | None] = mapped_column(sa.Integer)
