@@ -136,18 +136,15 @@ class _temporary_database:
             hide_password=False
         )
 
-        try:
-            with psycopg.connect(self._admin_url, autocommit=True) as connection:
-                connection.execute(
-                    sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
-                        sql.Identifier(self._temp_database)
-                    )
+        with psycopg.connect(self._admin_url, autocommit=True) as connection:
+            connection.execute(
+                sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
+                    sql.Identifier(self._temp_database)
                 )
-                connection.execute(
-                    sql.SQL("CREATE DATABASE {}").format(sql.Identifier(self._temp_database))
-                )
-        except psycopg.Error as exc:  # pragma: no cover - environment-dependent
-            pytest.skip(f"Cannot provision temporary PostgreSQL database: {exc}")
+            )
+            connection.execute(
+                sql.SQL("CREATE DATABASE {}").format(sql.Identifier(self._temp_database))
+            )
 
         return self._temp_url
 
