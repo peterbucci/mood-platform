@@ -3,7 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.dependencies import get_feature_service
-from app.schemas.feature import FeatureListResponse, FeatureResponse
+from app.schemas.feature import FeatureListResponse
+from app.schemas.responses import FeatureResponse
 from app.services.feature_service import FeatureDataParseError, FeatureNotFoundError, FeatureService
 
 router = APIRouter(prefix="/features", tags=["features"])

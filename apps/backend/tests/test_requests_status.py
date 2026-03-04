@@ -56,11 +56,11 @@ def test_get_requests_includes_pending_request(monkeypatch) -> None:
             "items": [
                 {
                     "id": "req_pending_1",
+                    "userId": CURRENT_USER_ID,
                     "createdAt": 1700000000,
                     "status": "pending",
                     "source": "phone",
                     "featureId": None,
-                    "feature": None,
                 }
             ],
             "limit": 20,
@@ -100,15 +100,11 @@ def test_get_requests_includes_feature_id_for_fulfilled_request(monkeypatch) -> 
             "items": [
                 {
                     "id": "req_fulfilled_1",
+                    "userId": CURRENT_USER_ID,
                     "createdAt": 1700000100,
                     "status": "fulfilled",
                     "source": "phone",
                     "featureId": "feat_1",
-                    "feature": {
-                        "id": "feat_1",
-                        "createdAt": 1700000200,
-                        "source": "phone-request",
-                    },
                 }
             ],
             "limit": 20,
@@ -168,11 +164,11 @@ def test_get_requests_applies_pagination_and_ordering(monkeypatch) -> None:
             "items": [
                 {
                     "id": "req_3",
+                    "userId": CURRENT_USER_ID,
                     "createdAt": 1700000200,
                     "status": "pending",
                     "source": "phone",
                     "featureId": None,
-                    "feature": None,
                 }
             ],
             "limit": 1,
@@ -184,11 +180,11 @@ def test_get_requests_applies_pagination_and_ordering(monkeypatch) -> None:
             "items": [
                 {
                     "id": "req_2",
+                    "userId": CURRENT_USER_ID,
                     "createdAt": 1700000100,
                     "status": "pending",
                     "source": "phone",
                     "featureId": None,
-                    "feature": None,
                 }
             ],
             "limit": 1,
