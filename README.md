@@ -58,6 +58,59 @@ Reset services and volumes:
 docker compose down -v
 ```
 
+## Database + Migrations
+
+Run backend migrations in the Docker environment:
+
+```bash
+docker compose run --rm api alembic -c alembic.ini upgrade head
+```
+
+Create a new migration after model changes:
+
+```bash
+docker compose run --rm api alembic -c alembic.ini revision --autogenerate -m "describe change"
+```
+
+Reset database state (drop all Postgres data) and re-run migrations:
+
+```bash
+docker compose down -v
+docker compose up -d postgres
+docker compose run --rm api alembic -c alembic.ini upgrade head
+```
+
+Quick verification flow for mood entry + FK links:
+
+```bash
+docker compose up --build -d
+docker compose run --rm api alembic -c alembic.ini upgrade head
+```
+
+```bash
+# Create a feature row and capture IDs
+docker compose exec postgres psql -U mood -d mood -c "INSERT INTO users (id) VALUES ('00000000-0000-0000-0000-000000000001') ON CONFLICT DO NOTHING;"
+docker compose exec postgres psql -U mood -d mood -c "INSERT INTO sleep_features (id, user_id, captured_at) VALUES ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001', now());"
+```
+
+```bash
+curl -X POST http://localhost:8000/moods \
+  -H "Content-Type: application/json" \
+  -d '{
+    "entry_at": "2026-03-04T12:00:00Z",
+    "label_category_key": "calm",
+    "label_emotion": "Relaxed",
+    "note": "steady afternoon",
+    "feature_set_ids": {
+      "sleep_features_id": "11111111-1111-1111-1111-111111111111"
+    }
+  }'
+```
+
+```bash
+docker compose exec postgres psql -U mood -d mood -c "SELECT m.id, m.sleep_features_id, s.id AS linked_sleep_id FROM mood_entries m JOIN sleep_features s ON s.id = m.sleep_features_id ORDER BY m.created_at DESC LIMIT 1;"
+```
+
 ## Documentation
 
 - `docs/README.md`: documentation entry point
