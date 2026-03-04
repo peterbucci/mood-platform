@@ -3,7 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_feature_request_service
-from app.schemas.request_status import RequestListResponse, RequestStatus
+from app.schemas.request_status import RequestListResponse
+from app.schemas.responses import RequestResponse
 from app.services.feature_request_service import FeatureRequestService
 
 router = APIRouter(prefix="/requests", tags=["requests"])
@@ -17,7 +18,7 @@ def list_requests(
 ) -> RequestListResponse:
     items = feature_request_service.list_requests(limit=limit, offset=offset)
     return RequestListResponse(
-        items=[RequestStatus(**item) for item in items],
+        items=[RequestResponse(**item) for item in items],
         limit=limit,
         offset=offset,
     )

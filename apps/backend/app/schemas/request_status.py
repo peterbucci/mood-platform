@@ -1,22 +1,9 @@
 from pydantic import BaseModel
 
-
-class RequestFeatureMetadata(BaseModel):
-    id: str
-    createdAt: int
-    source: str
-
-
-class RequestStatus(BaseModel):
-    id: str
-    createdAt: int
-    status: str
-    source: str
-    featureId: str | None
-    feature: RequestFeatureMetadata | None = None
+from app.schemas.responses import RequestResponse
 
 
 class RequestListResponse(BaseModel):
-    items: list[RequestStatus]
+    items: list[RequestResponse]
     limit: int
     offset: int

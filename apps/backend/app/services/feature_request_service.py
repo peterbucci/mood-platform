@@ -34,6 +34,7 @@ class FeatureRequestService:
         for request, feature in request_rows:
             payload: dict[str, Any] = {
                 "id": request.id,
+                "userId": request.user_id,
                 "createdAt": request.created_at,
                 "status": request.status,
                 "source": request.source,
