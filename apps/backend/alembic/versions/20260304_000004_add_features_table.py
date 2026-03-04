@@ -1,4 +1,4 @@
-"""add features table for fulfilled feature payloads
+"""add features table for public feature API
 
 Revision ID: 20260304_000004
 Revises: 20260304_000003

@@ -9,3 +9,9 @@ class FeatureResponse(BaseModel):
     createdAt: int
     source: str
     data: dict[str, Any]
+
+
+class FeatureListResponse(BaseModel):
+    items: list[FeatureResponse]
+    limit: int
+    offset: int

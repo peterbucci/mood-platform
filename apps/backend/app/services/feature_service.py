@@ -4,6 +4,7 @@ import json
 import uuid
 from typing import Any
 
+from app.db.models import Feature
 from app.repositories.feature_repository import FeatureRepository
 
 
@@ -20,6 +21,12 @@ class FeatureService:
         self._repository = repository
         self._owner_user_id = owner_user_id
 
+    def get_latest_feature(self) -> dict[str, Any]:
+        feature = self._repository.get_latest_feature(user_id=str(self._owner_user_id))
+        if feature is None:
+            raise FeatureNotFoundError("No features found for current user.")
+        return self._serialize_feature(feature)
+
     def get_feature_by_id(self, *, feature_id: str) -> dict[str, Any]:
         feature = self._repository.get_feature_by_id(
             user_id=str(self._owner_user_id),
@@ -27,7 +34,17 @@ class FeatureService:
         )
         if feature is None:
             raise FeatureNotFoundError(f"Feature {feature_id} was not found for current user.")
+        return self._serialize_feature(feature)
 
+    def list_features(self, *, limit: int, offset: int) -> list[dict[str, Any]]:
+        features = self._repository.list_features(
+            user_id=str(self._owner_user_id),
+            limit=limit,
+            offset=offset,
+        )
+        return [self._serialize_feature(feature) for feature in features]
+
+    def _serialize_feature(self, feature: Feature) -> dict[str, Any]:
         try:
             parsed_data = json.loads(feature.data)
         except json.JSONDecodeError as exc:
