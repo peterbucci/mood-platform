@@ -1,14 +1,20 @@
 # Backend App
 
-This directory contains the backend API and services (planned FastAPI app).
+This directory contains the FastAPI backend, repositories, services, and DB migrations.
 
-## Responsibilities
+## Database + Migrations
 
-- owner-authenticated API endpoints
-- Fitbit ingestion and normalization
-- fulfillment pipeline orchestration
-- PostgreSQL persistence
+From this directory (`apps/backend`), run:
 
-## Status
+```bash
+alembic -c alembic.ini upgrade head
+```
 
-Scaffold placeholder for Epic E1 foundations.
+Create a new migration:
+
+```bash
+alembic -c alembic.ini revision --autogenerate -m "describe change"
+```
+
+The migration environment reads `DATABASE_URL` and converts
+`postgresql://...` URLs to `postgresql+psycopg://...` for SQLAlchemy.
