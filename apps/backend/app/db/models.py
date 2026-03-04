@@ -49,6 +49,25 @@ class Feature(Base):
     data: Mapped[str] = mapped_column(sa.Text, nullable=False)
 
 
+class WorkerLock(Base):
+    __tablename__ = "worker_locks"
+    __table_args__ = (sa.Index("ix_worker_locks_expires_at", "expires_at"),)
+
+    lock_key: Mapped[str] = mapped_column(sa.Text, primary_key=True)
+    owner_id: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.text("now()"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.text("now()"),
+    )
+
+
 class FeatureSetMixin:
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
