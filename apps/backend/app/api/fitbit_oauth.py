@@ -4,7 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
 
 from app.dependencies import get_fitbit_oauth_service
-from app.schemas.fitbit_oauth import FitbitOAuthCallbackResponse
+from app.schemas.fitbit_oauth import (
+    FitbitOAuthCallbackResponse,
+    FitbitOAuthStatusResponse,
+    FitbitOAuthUnlinkResponse,
+)
 from app.services.fitbit_oauth_service import (
     FitbitOAuthConfigurationError,
     FitbitOAuthExchangeError,
@@ -56,3 +60,36 @@ def fitbit_oauth_callback(
         connected=True,
         expiresAt=expires_at,
     )
+
+
+@router.get("/status", response_model=FitbitOAuthStatusResponse)
+def fitbit_oauth_status(
+    fitbit_oauth_service: Annotated[FitbitOAuthService, Depends(get_fitbit_oauth_service)],
+) -> FitbitOAuthStatusResponse:
+    try:
+        connected, expires_at = fitbit_oauth_service.get_status(user_id=get_owner_user_id())
+    except FitbitOAuthExchangeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+
+    return FitbitOAuthStatusResponse(
+        connected=connected,
+        expiresAt=expires_at,
+    )
+
+
+@router.post("/unlink", response_model=FitbitOAuthUnlinkResponse)
+def fitbit_oauth_unlink(
+    fitbit_oauth_service: Annotated[FitbitOAuthService, Depends(get_fitbit_oauth_service)],
+) -> FitbitOAuthUnlinkResponse:
+    try:
+        fitbit_oauth_service.unlink(user_id=get_owner_user_id())
+    except FitbitOAuthExchangeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+
+    return FitbitOAuthUnlinkResponse(success=True)
