@@ -85,6 +85,12 @@ make revision MSG="describe change"
 make db-down
 ```
 
+Fitbit OAuth environment variables are also available in `.env.example`:
+
+- `FITBIT_CLIENT_ID`
+- `FITBIT_CLIENT_SECRET`
+- `FITBIT_REDIRECT_URI`
+
 Create a new migration after model changes:
 
 ```bash

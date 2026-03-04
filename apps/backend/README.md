@@ -74,6 +74,42 @@ Each request persists a row in `requests` with:
 - `status = "pending"`
 - `source = "phone"`
 
+## Fitbit OAuth
+
+The backend supports Fitbit OAuth connect/disconnect endpoints:
+
+- `GET /fitbit/oauth/start`
+- `GET /fitbit/oauth/callback`
+- `GET /fitbit/oauth/status`
+- `POST /fitbit/oauth/unlink`
+
+Required environment variables:
+
+- `FITBIT_CLIENT_ID`
+- `FITBIT_CLIENT_SECRET`
+- `FITBIT_REDIRECT_URI`
+
+Optional:
+
+- `FITBIT_AUTH_BASE_URL` (default: `https://www.fitbit.com/oauth2/authorize`)
+- `FITBIT_TOKEN_URL` (default: `https://api.fitbit.com/oauth2/token`)
+- `FITBIT_OAUTH_SCOPE` (default: `sleep heartrate activity profile`)
+
+Local verification:
+
+1. Set Fitbit OAuth env vars.
+2. Start API (`docker compose up --build api` or full stack).
+3. Open docs at `http://localhost:8000/docs`.
+4. Call `/fitbit/oauth/start` and confirm redirect URL includes state and scopes.
+5. Complete callback flow (or run tests with mocked token exchange).
+
+Token persistence:
+
+- OAuth states and token records are persisted in:
+  - `fitbit_oauth_states`
+  - `fitbit_oauth_connections`
+- Unlink removes the stored connection row for the owner user.
+
 ## Fulfillment Worker
 
 The worker continuously polls pending feature requests and attempts fulfillment.
