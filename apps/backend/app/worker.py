@@ -5,6 +5,9 @@ import logging
 import os
 import signal
 import uuid
+from datetime import UTC
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import Thread
 from typing import Any
 
 from sqlalchemy import create_engine
@@ -25,6 +28,8 @@ DEFAULT_WORKER_USER_BATCH_SIZE = 100
 DEFAULT_WORKER_REQUEST_BATCH_SIZE = 100
 DEFAULT_WORKER_LOCK_TTL_SECONDS = 30.0
 DEFAULT_WORKER_LOCK_PREFIX = "fulfillment_lock"
+DEFAULT_WORKER_HEALTH_HOST = "0.0.0.0"
+DEFAULT_WORKER_HEALTH_PORT = 3001
 
 
 class StaticFitbitClient(FitbitClientProtocol):
@@ -52,6 +57,75 @@ class StaticFitbitClient(FitbitClientProtocol):
 
     def fetch_user_data(self, *, user_id: str) -> dict[str, Any]:
         return dict(self._payload)
+
+
+class WorkerHealthServer:
+    def __init__(
+        self,
+        *,
+        runtime: WorkerRuntime,
+        host: str = DEFAULT_WORKER_HEALTH_HOST,
+        port: int = DEFAULT_WORKER_HEALTH_PORT,
+    ) -> None:
+        self._runtime = runtime
+        self._host = host
+        self._port = port
+        self._server: ThreadingHTTPServer | None = None
+        self._thread: Thread | None = None
+
+    @property
+    def bound_port(self) -> int:
+        if self._server is None:
+            return self._port
+        return int(self._server.server_address[1])
+
+    def start(self) -> None:
+        runtime = self._runtime
+
+        class _HealthHandler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                if self.path != "/healthz":
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+
+                last_loop_at = runtime.last_loop_at
+                payload = {
+                    "status": "shutting_down" if runtime.shutdown_requested else "ok",
+                    "shutting_down": runtime.shutdown_requested,
+                    "in_flight": runtime.in_flight,
+                    "last_loop_at": (
+                        last_loop_at.astimezone(UTC).isoformat()
+                        if last_loop_at is not None
+                        else None
+                    ),
+                }
+                body = json.dumps(payload).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, _format: str, *_args: Any) -> None:
+                return
+
+        self._server = ThreadingHTTPServer((self._host, self._port), _HealthHandler)
+        self._thread = Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+        logger.info("Worker health server started on %s:%s", self._host, self.bound_port)
+
+    def stop(self) -> None:
+        if self._server is None:
+            return
+
+        self._server.shutdown()
+        self._server.server_close()
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+        logger.info("Worker health server stopped.")
+        self._server = None
+        self._thread = None
 
 
 def build_session_factory() -> sessionmaker[Session]:
@@ -158,6 +232,8 @@ def run_worker(
     lock_owner_id: str,
     lock_ttl_seconds: float = DEFAULT_WORKER_LOCK_TTL_SECONDS,
     lock_prefix: str = DEFAULT_WORKER_LOCK_PREFIX,
+    health_host: str = DEFAULT_WORKER_HEALTH_HOST,
+    health_port: int = DEFAULT_WORKER_HEALTH_PORT,
 ) -> None:
     runtime = WorkerRuntime(
         run_once_fn=lambda: process_pending_once(
@@ -173,6 +249,11 @@ def run_worker(
         max_idle_sleep_seconds=max_idle_sleep_seconds,
         backoff_multiplier=backoff_multiplier,
     )
+    health_server = WorkerHealthServer(
+        runtime=runtime,
+        host=health_host,
+        port=health_port,
+    )
 
     def _handle_signal(signum: int, _frame: Any) -> None:
         logger.info("Received signal %s. Worker will shut down after in-flight iteration.", signum)
@@ -182,8 +263,12 @@ def run_worker(
     signal.signal(signal.SIGINT, _handle_signal)
 
     logger.info("Starting fulfillment worker loop.")
-    runtime.run_forever()
-    logger.info("Fulfillment worker exited cleanly.")
+    health_server.start()
+    try:
+        runtime.run_forever()
+        logger.info("Fulfillment worker exited cleanly.")
+    finally:
+        health_server.stop()
 
 
 def _parse_env_float(name: str, default: float) -> float:
@@ -249,6 +334,11 @@ def main() -> int:
             default=DEFAULT_WORKER_LOCK_TTL_SECONDS,
         ),
         lock_prefix=os.getenv("WORKER_LOCK_PREFIX", DEFAULT_WORKER_LOCK_PREFIX),
+        health_host=os.getenv("WORKER_HEALTH_HOST", DEFAULT_WORKER_HEALTH_HOST),
+        health_port=_parse_env_int(
+            name="WORKER_HEALTH_PORT",
+            default=DEFAULT_WORKER_HEALTH_PORT,
+        ),
     )
     return 0
 
