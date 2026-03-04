@@ -1,6 +1,7 @@
 # Backend App
 
-This directory contains the FastAPI backend, repositories, services, and DB migrations.
+This directory contains the FastAPI backend, repositories, services, DB migrations,
+and the fulfillment worker runtime.
 
 ## Database + Migrations
 
@@ -72,3 +73,83 @@ Each request persists a row in `requests` with:
 
 - `status = "pending"`
 - `source = "phone"`
+
+## Fulfillment Worker
+
+The worker continuously polls pending feature requests and attempts fulfillment.
+It runs independently from the API process.
+
+Run locally from `apps/backend`:
+
+```bash
+python -m app.worker
+```
+
+From repo root, set `PYTHONPATH`:
+
+```bash
+PYTHONPATH=apps/backend python -m app.worker
+```
+
+The worker requires:
+
+- `DATABASE_URL`
+- optional `FITBIT_STATIC_PAYLOAD` (JSON object used as feature payload fallback)
+
+Useful worker env vars:
+
+- `WORKER_BASE_IDLE_SLEEP_SECONDS` (default `1`)
+- `WORKER_MAX_IDLE_SLEEP_SECONDS` (default `5`)
+- `WORKER_BACKOFF_MULTIPLIER` (default `2`)
+- `WORKER_USER_BATCH_SIZE` (default `100`)
+- `WORKER_REQUEST_BATCH_SIZE` (default `100`)
+- `WORKER_LOCK_TTL_SECONDS` (default `30`)
+- `WORKER_OWNER_ID` (optional explicit worker identity)
+- `WORKER_HEALTH_PORT` (default `3001`)
+
+Health endpoint:
+
+```bash
+curl http://localhost:3001/healthz
+```
+
+Example response:
+
+```json
+{
+  "status": "ok",
+  "shutting_down": false,
+  "in_flight": false,
+  "last_loop_at": "2026-03-04T22:15:19.123456+00:00"
+}
+```
+
+Graceful shutdown:
+
+- On `SIGTERM`/`SIGINT`, the worker stops taking new work.
+- It finishes the in-flight iteration and exits cleanly.
+
+### Docker Compose Worker
+
+Start worker with the local stack:
+
+```bash
+docker compose up --build
+```
+
+Or worker only:
+
+```bash
+docker compose up --build worker
+```
+
+The `worker` service has a Docker healthcheck that probes:
+
+- `GET http://127.0.0.1:3001/healthz`
+
+### Troubleshooting
+
+- If requests remain `pending`, verify migrations are at head (worker locks table included):
+  - `python -m alembic -c apps/backend/alembic.ini upgrade head`
+- If multiple workers run, per-user TTL locks in `worker_locks` prevent concurrent processing.
+- If healthcheck fails, verify worker logs and `WORKER_HEALTH_PORT`.

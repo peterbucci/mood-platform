@@ -34,7 +34,7 @@ mood-platform/
 
 ## Local Development (Docker)
 
-Run the local stack (Postgres, Redis, API):
+Run the local stack (Postgres, Redis, API, worker):
 
 ```bash
 docker compose up --build
