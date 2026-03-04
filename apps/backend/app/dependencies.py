@@ -12,8 +12,10 @@ from app.repositories.postgres import PostgresRepository
 from app.repositories.redis import RedisRepository
 from app.services.feature_request_service import FeatureRequestService
 from app.services.feature_service import FeatureService
+from app.services.fitbit_oauth_service import FitbitOAuthService
 from app.services.health_service import HealthService
 from app.services.mood_entry_service import MoodEntryService, get_owner_user_id
+from app.settings import get_settings
 
 
 def get_postgres_repository() -> PostgresRepository:
@@ -85,3 +87,7 @@ def get_mood_entry_service(
         repository=mood_entry_repository,
         owner_user_id=get_owner_user_id(),
     )
+
+
+def get_fitbit_oauth_service() -> FitbitOAuthService:
+    return FitbitOAuthService(settings=get_settings())
