@@ -27,6 +27,17 @@ class User(Base):
     )
 
 
+class FeatureRequest(Base):
+    __tablename__ = "requests"
+
+    id: Mapped[str] = mapped_column(sa.Text, primary_key=True)
+    user_id: Mapped[str] = mapped_column("userId", sa.Text, nullable=False)
+    created_at: Mapped[int] = mapped_column("createdAt", sa.Integer, nullable=False)
+    status: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    feature_id: Mapped[str | None] = mapped_column("featureId", sa.Text)
+    source: Mapped[str] = mapped_column(sa.Text, nullable=False)
+
+
 class FeatureSetMixin:
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
