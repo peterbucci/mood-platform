@@ -17,3 +17,7 @@ select = ["E", "F", "I", "UP", "B"]
 quote-style = "double"
 indent-style = "space"
 line-ending = "lf"
+
+[tool.pytest.ini_options]
+pythonpath = ["apps/backend"]
+testpaths = ["apps/backend/tests"]
