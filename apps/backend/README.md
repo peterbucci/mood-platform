@@ -50,3 +50,25 @@ How to rebuild datasets after extractor changes:
 1. Filter feature rows by `extractor_version` for the dataset you want.
 2. Recompute model training sets from that fixed version slice.
 3. Compare model metrics across versions (`v1` vs `v2`) before promoting.
+
+## Feature Request Endpoint
+
+Create a feature-generation request:
+
+```bash
+curl -X POST http://localhost:8000/features/request
+```
+
+Expected response:
+
+```json
+{
+  "requestId": "c6f0e4f1-3d93-4703-9d65-1291d92c8bb2",
+  "status": "pending"
+}
+```
+
+Each request persists a row in `requests` with:
+
+- `status = "pending"`
+- `source = "phone"`
