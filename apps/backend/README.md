@@ -4,7 +4,13 @@ This directory contains the FastAPI backend, repositories, services, and DB migr
 
 ## Database + Migrations
 
-From this directory (`apps/backend`), run:
+Canonical command from repo root:
+
+```bash
+python -m alembic -c apps/backend/alembic.ini upgrade head
+```
+
+From this directory (`apps/backend`), equivalent command:
 
 ```bash
 alembic -c alembic.ini upgrade head
