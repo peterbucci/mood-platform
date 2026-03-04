@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import os
 from logging.config import fileConfig
 
 from alembic import context
 from app.db import models  # noqa: F401
 from app.db.base import Base
+from app.db.session import get_database_url_from_env
 from sqlalchemy import engine_from_config, pool
 
 config = context.config
@@ -13,17 +13,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-
-def _database_url_from_env() -> str:
-    database_url = os.getenv("DATABASE_URL", "").strip()
-    if not database_url:
-        raise RuntimeError("DATABASE_URL environment variable is required for Alembic.")
-    if database_url.startswith("postgresql://"):
-        return database_url.replace("postgresql://", "postgresql+psycopg://", 1)
-    return database_url
-
-
-config.set_main_option("sqlalchemy.url", _database_url_from_env())
+config.set_main_option("sqlalchemy.url", get_database_url_from_env())
 
 target_metadata = Base.metadata
 
