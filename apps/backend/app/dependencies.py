@@ -7,6 +7,7 @@ from app.db.session import get_db_session
 from app.repositories.feature_repository import FeatureRepository
 from app.repositories.feature_request_repository import FeatureRequestRepository
 from app.repositories.feature_set_repository import FeatureSetRepository
+from app.repositories.fitbit_oauth_repository import FitbitOAuthRepository
 from app.repositories.mood_entry_repository import MoodEntryRepository
 from app.repositories.postgres import PostgresRepository
 from app.repositories.redis import RedisRepository
@@ -60,6 +61,12 @@ def get_feature_request_repository(
     return FeatureRequestRepository(session=db_session)
 
 
+def get_fitbit_oauth_repository(
+    db_session: Annotated[Session, Depends(get_db_session)],
+) -> FitbitOAuthRepository:
+    return FitbitOAuthRepository(session=db_session)
+
+
 def get_feature_request_service(
     feature_request_repository: Annotated[
         FeatureRequestRepository, Depends(get_feature_request_repository)
@@ -89,5 +96,10 @@ def get_mood_entry_service(
     )
 
 
-def get_fitbit_oauth_service() -> FitbitOAuthService:
-    return FitbitOAuthService(settings=get_settings())
+def get_fitbit_oauth_service(
+    fitbit_oauth_repository: Annotated[FitbitOAuthRepository, Depends(get_fitbit_oauth_repository)],
+) -> FitbitOAuthService:
+    return FitbitOAuthService(
+        repository=fitbit_oauth_repository,
+        settings=get_settings(),
+    )
