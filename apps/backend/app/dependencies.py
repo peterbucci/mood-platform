@@ -4,6 +4,7 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db_session
+from app.repositories.feature_set_repository import FeatureSetRepository
 from app.repositories.mood_entry_repository import MoodEntryRepository
 from app.repositories.postgres import PostgresRepository
 from app.repositories.redis import RedisRepository
@@ -33,6 +34,12 @@ def get_mood_entry_repository(
     db_session: Annotated[Session, Depends(get_db_session)],
 ) -> MoodEntryRepository:
     return MoodEntryRepository(session=db_session)
+
+
+def get_feature_set_repository(
+    db_session: Annotated[Session, Depends(get_db_session)],
+) -> FeatureSetRepository:
+    return FeatureSetRepository(session=db_session)
 
 
 def get_mood_entry_service(
