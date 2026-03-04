@@ -81,6 +81,34 @@ class FeatureRequestRepository:
         )
         return result.scalars().all()
 
+    def list_pending_user_ids(self, *, limit: int = 100) -> list[str]:
+        result = self._session.execute(
+            sa.select(FeatureRequest.user_id)
+            .where(
+                FeatureRequest.status == PENDING_STATUS,
+                FeatureRequest.feature_id.is_(None),
+            )
+            .group_by(FeatureRequest.user_id)
+            .order_by(sa.func.min(FeatureRequest.created_at).asc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    def list_pending_requests_by_user(
+        self, *, user_id: str, limit: int = 100
+    ) -> list[FeatureRequest]:
+        result = self._session.execute(
+            sa.select(FeatureRequest)
+            .where(
+                FeatureRequest.user_id == user_id,
+                FeatureRequest.status == PENDING_STATUS,
+                FeatureRequest.feature_id.is_(None),
+            )
+            .order_by(FeatureRequest.created_at.asc())
+            .limit(limit)
+        )
+        return result.scalars().all()
+
     def get_request_by_id(self, *, request_id: str) -> FeatureRequest | None:
         result = self._session.execute(
             sa.select(FeatureRequest).where(FeatureRequest.id == request_id)

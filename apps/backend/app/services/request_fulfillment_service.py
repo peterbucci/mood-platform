@@ -60,8 +60,24 @@ class RequestFulfillmentService:
         self._sleep = sleep_func
 
     def process_pending_requests(self, *, limit: int = 100) -> FulfillmentRunStats:
+        return self._process_requests(self._repository.list_pending_requests(limit=limit))
+
+    def process_pending_requests_for_user(
+        self,
+        *,
+        user_id: str,
+        limit: int = 100,
+    ) -> FulfillmentRunStats:
+        return self._process_requests(
+            self._repository.list_pending_requests_by_user(
+                user_id=user_id,
+                limit=limit,
+            )
+        )
+
+    def _process_requests(self, requests) -> FulfillmentRunStats:
         stats = FulfillmentRunStats()
-        for request in self._repository.list_pending_requests(limit=limit):
+        for request in requests:
             stats.processed += 1
             outcome = self.process_request(request.id)
             if outcome == "fulfilled":
