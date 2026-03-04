@@ -1,0 +1,97 @@
+name: Backend CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: mood
+          POSTGRES_USER: mood
+          POSTGRES_PASSWORD: mood
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mood -d mood"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://mood:mood@127.0.0.1:5432/mood
+      REDIS_URL: redis://127.0.0.1:6379/0
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r apps/backend/requirements.txt pytest ruff
+
+      - name: Wait for PostgreSQL
+        run: |
+          python - <<'PY'
+          import os
+          import time
+
+          import psycopg
+
+          dsn = os.environ["DATABASE_URL"]
+          last_error = ""
+          for _ in range(30):
+              try:
+                  conn = psycopg.connect(dsn, connect_timeout=2)
+                  conn.close()
+                  print("PostgreSQL is ready.")
+                  break
+              except Exception as exc:  # pragma: no cover - CI readiness path
+                  last_error = str(exc)
+                  time.sleep(2)
+          else:
+              raise SystemExit(f"PostgreSQL did not become ready: {last_error}")
+          PY
+
+      - name: Apply migrations
+        run: python -m alembic -c apps/backend/alembic.ini upgrade head
+
+      - name: Smoke-check migrated schema
+        run: |
+          python - <<'PY'
+          import os
+
+          import psycopg
+
+          conn = psycopg.connect(os.environ["DATABASE_URL"])
+          try:
+              with conn.cursor() as cursor:
+                  cursor.execute(
+                      "SELECT 1 FROM information_schema.tables "
+                      "WHERE table_schema='public' AND table_name='mood_entries'"
+                  )
+                  row = cursor.fetchone()
+          finally:
+              conn.close()
+
+          assert row is not None, "mood_entries table was not created by migrations"
+          print("Smoke check passed: mood_entries table exists.")
+          PY
+
+      - name: Ruff
+        run: python -m ruff check apps/backend
+
+      - name: Pytest
+        run: python -m pytest apps/backend/tests -q
