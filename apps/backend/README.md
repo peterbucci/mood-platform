@@ -193,9 +193,7 @@ Night anchor knobs:
 Rate-limit/backoff policy:
 
 - Per-user minimum request interval: `FITBIT_MIN_FETCH_INTERVAL_SECONDS` (default `0.2`).
-- 429 retry count: `FITBIT_MAX_RETRIES` (default `3`).
-- 429 backoff base: `FITBIT_BACKOFF_BASE_SECONDS` (default `1.0`).
-- `Retry-After` header is honored when present.
+- Fitbit calls are fail-fast on `429` (no per-call retry loop).
 - Failed requests persist retry state in `requests` (`attempts`, `nextAttemptAt`, `lastErrorCode`, `lastErrorSignal`) so the worker does not immediately retry the same request in the next loop.
 
 403 semantics:
@@ -279,7 +277,7 @@ Behavior rules:
 - Derived fields for missing signals are emitted as `null`.
 - `401` is treated as auth failure for the pull and retries via token refresh.
 - `403`/`404`/`5xx`/malformed JSON become per-signal missing markers.
-- `429` is retried with backoff and can schedule request-level retry using `nextAttemptAt` when retries are exhausted.
+- `429` is treated as fail-fast for the current pull and schedules request-level retry using `nextAttemptAt`.
 
 ## Fulfillment Worker
 
