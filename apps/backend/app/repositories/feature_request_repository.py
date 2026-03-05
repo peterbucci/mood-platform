@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Feature, FeatureRequest
 
 PENDING_STATUS = "pending"
+FULFILLED_STATUS = "fulfilled"
 PHONE_SOURCE = "phone"
 
 
@@ -147,6 +148,26 @@ class FeatureRequestRepository:
         )
         return result.scalar_one_or_none()
 
+    def get_request_by_id_for_user(self, *, user_id: str, request_id: str) -> FeatureRequest | None:
+        result = self._session.execute(
+            sa.select(FeatureRequest).where(
+                FeatureRequest.id == request_id,
+                FeatureRequest.user_id == user_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    def count_pending_requests(self, *, user_id: str | None = None) -> int:
+        query = (
+            sa.select(sa.func.count())
+            .select_from(FeatureRequest)
+            .where(FeatureRequest.status == PENDING_STATUS)
+        )
+        if user_id is not None:
+            query = query.where(FeatureRequest.user_id == user_id)
+        count = self._session.execute(query).scalar_one()
+        return int(count or 0)
+
     def fulfill_request_if_pending(
         self,
         *,
@@ -182,7 +203,7 @@ class FeatureRequestRepository:
                     FeatureRequest.feature_id.is_(None),
                 )
                 .values(
-                    status="fulfilled",
+                    status=FULFILLED_STATUS,
                     feature_id=feature_id,
                     attempts=0,
                     next_attempt_at=None,

@@ -29,6 +29,19 @@ class User(Base):
 
 class FeatureRequest(Base):
     __tablename__ = "requests"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "status IN ('pending','fulfilled','canceled')",
+            name="ck_requests_status",
+        ),
+        sa.CheckConstraint(
+            "(status != 'pending' OR \"featureId\" IS NULL) "
+            "AND (status != 'fulfilled' OR \"featureId\" IS NOT NULL)",
+            name="ck_requests_feature_id_consistency",
+        ),
+        sa.Index("ix_requests_status", "status"),
+        sa.Index("ix_requests_user_status", "userId", "status"),
+    )
 
     id: Mapped[str] = mapped_column(sa.Text, primary_key=True)
     user_id: Mapped[str] = mapped_column("userId", sa.Text, nullable=False)

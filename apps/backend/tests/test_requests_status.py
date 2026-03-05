@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 
 import psycopg
+import pytest
 from app.db import session as db_session
 from app.main import app
 from fastapi.testclient import TestClient
@@ -190,6 +191,187 @@ def test_get_requests_applies_pagination_and_ordering(monkeypatch) -> None:
             "limit": 1,
             "offset": 1,
         }
+
+        db_session._session_factory.cache_clear()
+
+
+def test_get_request_by_id_returns_status_and_feature_id(monkeypatch) -> None:
+    with _temporary_database() as database_url:
+        _run_alembic_upgrade(database_url=database_url)
+        _configure_runtime_env(monkeypatch=monkeypatch, database_url=database_url)
+        _insert_feature(
+            database_url=database_url,
+            feature_id="feat_status_1",
+            user_id=CURRENT_USER_ID,
+            created_at=1700000400,
+            source="phone-request",
+            data={"steps": 900},
+        )
+        _insert_request(
+            database_url=database_url,
+            request_id="req_status_1",
+            user_id=CURRENT_USER_ID,
+            created_at=1700000300,
+            status="fulfilled",
+            source="phone",
+            feature_id="feat_status_1",
+        )
+
+        with TestClient(app) as client:
+            response = client.get("/requests/req_status_1")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "id": "req_status_1",
+            "status": "fulfilled",
+            "featureId": "feat_status_1",
+            "createdAt": 1700000300,
+        }
+
+        db_session._session_factory.cache_clear()
+
+
+def test_get_request_by_id_returns_404_when_missing(monkeypatch) -> None:
+    with _temporary_database() as database_url:
+        _run_alembic_upgrade(database_url=database_url)
+        _configure_runtime_env(monkeypatch=monkeypatch, database_url=database_url)
+
+        with TestClient(app) as client:
+            response = client.get("/requests/does-not-exist")
+
+        assert response.status_code == 404
+        assert response.json() == {
+            "detail": "Request does-not-exist was not found for current user."
+        }
+
+        db_session._session_factory.cache_clear()
+
+
+def test_pending_count_reflects_pending_requests_and_decreases_when_fulfilled(monkeypatch) -> None:
+    with _temporary_database() as database_url:
+        _run_alembic_upgrade(database_url=database_url)
+        _configure_runtime_env(monkeypatch=monkeypatch, database_url=database_url)
+
+        _insert_request(
+            database_url=database_url,
+            request_id="req_pending_a",
+            user_id=CURRENT_USER_ID,
+            created_at=1700000500,
+            status="pending",
+            source="phone",
+            feature_id=None,
+        )
+        _insert_request(
+            database_url=database_url,
+            request_id="req_pending_b",
+            user_id=CURRENT_USER_ID,
+            created_at=1700000501,
+            status="pending",
+            source="phone",
+            feature_id=None,
+        )
+        _insert_feature(
+            database_url=database_url,
+            feature_id="feat_other",
+            user_id=CURRENT_USER_ID,
+            created_at=1700000502,
+            source="phone-request",
+            data={"steps": 2100},
+        )
+        _insert_request(
+            database_url=database_url,
+            request_id="req_fulfilled_a",
+            user_id=CURRENT_USER_ID,
+            created_at=1700000503,
+            status="fulfilled",
+            source="phone",
+            feature_id="feat_other",
+        )
+        _insert_request(
+            database_url=database_url,
+            request_id="req_pending_other_user",
+            user_id=OTHER_USER_ID,
+            created_at=1700000504,
+            status="pending",
+            source="phone",
+            feature_id=None,
+        )
+
+        with TestClient(app) as client:
+            initial_response = client.get("/requests/pending/count")
+            other_user_response = client.get(f"/requests/pending/count?userId={OTHER_USER_ID}")
+
+        assert initial_response.status_code == 200
+        assert initial_response.json() == {"pendingCount": 2}
+        assert other_user_response.status_code == 200
+        assert other_user_response.json() == {"pendingCount": 1}
+
+        _insert_feature(
+            database_url=database_url,
+            feature_id="feat_newly_fulfilled",
+            user_id=CURRENT_USER_ID,
+            created_at=1700000505,
+            source="phone-request",
+            data={"steps": 2200},
+        )
+        with psycopg.connect(database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE requests
+                    SET status = 'fulfilled', "featureId" = %s
+                    WHERE id = %s
+                    """,
+                    ("feat_newly_fulfilled", "req_pending_a"),
+                )
+            connection.commit()
+
+        with TestClient(app) as client:
+            after_fulfillment_response = client.get("/requests/pending/count")
+
+        assert after_fulfillment_response.status_code == 200
+        assert after_fulfillment_response.json() == {"pendingCount": 1}
+
+        db_session._session_factory.cache_clear()
+
+
+def test_request_status_constraints_enforced_in_database(monkeypatch) -> None:
+    with _temporary_database() as database_url:
+        _run_alembic_upgrade(database_url=database_url)
+        _configure_runtime_env(monkeypatch=monkeypatch, database_url=database_url)
+
+        with pytest.raises(psycopg.errors.CheckViolation):
+            _insert_request(
+                database_url=database_url,
+                request_id="req_bad_status",
+                user_id=CURRENT_USER_ID,
+                created_at=1700000600,
+                status="processing",
+                source="phone",
+                feature_id=None,
+            )
+
+        with pytest.raises(psycopg.errors.CheckViolation):
+            _insert_request(
+                database_url=database_url,
+                request_id="req_pending_with_feature",
+                user_id=CURRENT_USER_ID,
+                created_at=1700000601,
+                status="pending",
+                source="phone",
+                feature_id="some_feature",
+            )
+
+        with pytest.raises(psycopg.errors.CheckViolation):
+            _insert_request(
+                database_url=database_url,
+                request_id="req_fulfilled_without_feature",
+                user_id=CURRENT_USER_ID,
+                created_at=1700000602,
+                status="fulfilled",
+                source="phone",
+                feature_id=None,
+            )
 
         db_session._session_factory.cache_clear()
 
