@@ -18,9 +18,12 @@ class FeatureRequestService:
         self._repository = repository
         self._owner_user_id = owner_user_id
 
-    def create_request(self) -> tuple[str, str]:
+    def create_request(self, *, client_features: dict[str, Any] | None = None) -> tuple[str, str]:
         try:
-            return self._repository.create_request(user_id=str(self._owner_user_id))
+            return self._repository.create_request_with_client_features(
+                user_id=str(self._owner_user_id),
+                client_features=client_features,
+            )
         except FeatureRequestWriteError as exc:
             raise FeatureRequestPersistenceError(str(exc)) from exc
 
