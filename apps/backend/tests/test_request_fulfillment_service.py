@@ -226,6 +226,93 @@ def test_worker_continues_after_single_request_failure(caplog) -> None:
         assert success_feature_count == 1
 
 
+def test_canceled_requests_are_not_selected_for_fulfillment() -> None:
+    pending_user_id = "00000000-0000-0000-0000-00000000ee08"
+    canceled_user_id = "00000000-0000-0000-0000-00000000ee09"
+    pending_request_id = "req_pending_selected"
+    canceled_request_id = "req_canceled_not_selected"
+
+    with _temporary_database() as database_url:
+        _run_alembic_upgrade(database_url=database_url)
+        _insert_request(
+            database_url=database_url,
+            request_id=pending_request_id,
+            user_id=pending_user_id,
+            created_at=1700000200,
+            status="pending",
+            source="phone",
+            feature_id=None,
+        )
+        _insert_request(
+            database_url=database_url,
+            request_id=canceled_request_id,
+            user_id=canceled_user_id,
+            created_at=1700000201,
+            status="canceled",
+            source="phone",
+            feature_id=None,
+        )
+
+        fitbit_client = FakeFitbitClient({pending_user_id: [{"steps": {"count": 2500}}]})
+
+        with _sqlalchemy_session(database_url) as session:
+            service = RequestFulfillmentService(
+                repository=FeatureRequestRepository(session=session),
+                fitbit_client=fitbit_client,
+            )
+            stats = service.process_pending_requests()
+
+        assert stats.processed == 1
+        assert stats.fulfilled == 1
+        assert fitbit_client.calls_by_user.get(canceled_user_id, 0) == 0
+
+        with psycopg.connect(database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT status, "featureId"
+                    FROM requests
+                    WHERE id = %s
+                    """,
+                    (pending_request_id,),
+                )
+                pending_row = cursor.fetchone()
+                cursor.execute(
+                    """
+                    SELECT status, "featureId"
+                    FROM requests
+                    WHERE id = %s
+                    """,
+                    (canceled_request_id,),
+                )
+                canceled_row = cursor.fetchone()
+                cursor.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM features
+                    WHERE "userId" = %s
+                    """,
+                    (pending_user_id,),
+                )
+                pending_feature_count = cursor.fetchone()[0]
+                cursor.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM features
+                    WHERE "userId" = %s
+                    """,
+                    (canceled_user_id,),
+                )
+                canceled_feature_count = cursor.fetchone()[0]
+
+        assert pending_row is not None
+        assert pending_row[0] == "fulfilled"
+        assert pending_row[1] is not None
+        assert canceled_row == ("canceled", None)
+        assert pending_feature_count == 1
+        assert canceled_feature_count == 0
+
+
 def test_request_processing_is_idempotent() -> None:
     user_id = "00000000-0000-0000-0000-00000000ee04"
     request_id = "req_idempotent"

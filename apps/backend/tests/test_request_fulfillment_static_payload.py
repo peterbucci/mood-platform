@@ -47,6 +47,19 @@ class _InMemoryRepository:
             return self.request
         return None
 
+    def get_request_by_id_for_user_for_update(
+        self,
+        *,
+        user_id: str,
+        request_id: str,
+    ) -> _Request | None:
+        if self.request.id != request_id or self.request.user_id != user_id:
+            return None
+        return self.request
+
+    def rollback(self) -> None:
+        return None
+
     def fulfill_request_if_pending(
         self,
         *,
@@ -100,6 +113,20 @@ class _MultiRequestInMemoryRepository:
 
     def get_request_by_id(self, *, request_id: str) -> _Request | None:
         return next((request for request in self.requests if request.id == request_id), None)
+
+    def get_request_by_id_for_user_for_update(
+        self,
+        *,
+        user_id: str,
+        request_id: str,
+    ) -> _Request | None:
+        request = self.get_request_by_id(request_id=request_id)
+        if request is None or request.user_id != user_id:
+            return None
+        return request
+
+    def rollback(self) -> None:
+        return None
 
     def fulfill_request_if_pending(
         self,
@@ -206,6 +233,52 @@ class _TimezoneAwareFitbitClient:
         return dict(self._fitbit_payload)
 
 
+class _CancelDuringPersistRepository(_InMemoryRepository):
+    def __init__(self, request: _Request) -> None:
+        super().__init__(request)
+        self.fulfill_attempted = False
+        self._canceled_mid_run = False
+
+    def get_request_by_id_for_user_for_update(
+        self,
+        *,
+        user_id: str,
+        request_id: str,
+    ) -> _Request | None:
+        request = super().get_request_by_id_for_user_for_update(
+            user_id=user_id,
+            request_id=request_id,
+        )
+        if request is None:
+            return None
+        if not self._canceled_mid_run:
+            request.status = "canceled"
+            self._canceled_mid_run = True
+        return request
+
+    def fulfill_request_if_pending(
+        self,
+        *,
+        request_id: str,
+        user_id: str,
+        feature_source: str,  # noqa: ARG002
+        feature_payload: dict[str, Any],
+        source_timezone: str | None = None,  # noqa: ARG002
+        window_start=None,  # noqa: ANN001, ARG002
+        window_end=None,  # noqa: ANN001, ARG002
+    ) -> str | None:
+        self.fulfill_attempted = True
+        return super().fulfill_request_if_pending(
+            request_id=request_id,
+            user_id=user_id,
+            feature_source=feature_source,
+            feature_payload=feature_payload,
+            source_timezone=source_timezone,
+            window_start=window_start,
+            window_end=window_end,
+        )
+
+
 def test_request_fulfillment_succeeds_with_forbidden_breathing_rate() -> None:
     request = _Request(
         id="req-forbidden-br-1",
@@ -225,6 +298,38 @@ def test_request_fulfillment_succeeds_with_forbidden_breathing_rate() -> None:
     assert stats.fulfilled == 1
     assert repository.saved_payload is not None
     assert "missing_breathing_rate_forbidden" in repository.saved_payload["notes"]
+
+
+def test_mid_run_cancellation_skips_fulfillment_without_linking_feature() -> None:
+    request = _Request(
+        id="req-mid-run-cancel-1",
+        user_id="00000000-0000-0000-0000-00000000ab99",
+        created_at=1772721000,
+        status="pending",
+    )
+    repository = _CancelDuringPersistRepository(request)
+    fitbit_client = _TimezoneAwareFitbitClient(
+        timezone_blob={
+            "__missing": False,
+            "reason": None,
+            "raw_status": 200,
+            "payload": {"timezone": "America/New_York"},
+        }
+    )
+    service = RequestFulfillmentService(
+        repository=repository,  # type: ignore[arg-type]
+        fitbit_client=fitbit_client,  # type: ignore[arg-type]
+    )
+
+    stats = service.process_pending_requests()
+
+    assert stats.processed == 1
+    assert stats.fulfilled == 0
+    assert stats.skipped == 1
+    assert repository.fulfill_attempted is False
+    assert request.status == "canceled"
+    assert request.feature_id is None
+    assert repository.saved_payload is None
 
 
 def test_request_fulfillment_prefers_fitbit_timezone_over_client_timezone() -> None:

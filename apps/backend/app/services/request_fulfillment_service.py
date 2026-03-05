@@ -193,6 +193,15 @@ class RequestFulfillmentService:
                 client_features=client_features,
                 request_context=anchor_ctx,
             )
+            if not self._is_request_pending_for_persist(
+                request_id=request.id,
+                user_id=request.user_id,
+            ):
+                logger.info(
+                    "Skipping request %s because status changed before persistence.",
+                    request.id,
+                )
+                return "skipped"
             feature_id = self._repository.fulfill_request_if_pending(
                 request_id=request.id,
                 user_id=request.user_id,
@@ -219,6 +228,27 @@ class RequestFulfillmentService:
             logger.exception("Failed to fulfill request %s.", request.id)
             self._schedule_request_retry(request=request, exc=exc)
             return "failed"
+
+    def _is_request_pending_for_persist(self, *, request_id: str, user_id: str) -> bool:
+        get_for_update = getattr(self._repository, "get_request_by_id_for_user_for_update", None)
+        if callable(get_for_update):
+            request = get_for_update(
+                request_id=request_id,
+                user_id=user_id,
+            )
+            if request is None:
+                self._rollback_repository_if_supported()
+                return False
+
+            is_pending = request.status == PENDING_STATUS and request.feature_id is None
+            if not is_pending:
+                self._rollback_repository_if_supported()
+            return is_pending
+
+        request = self._repository.get_request_by_id(request_id=request_id)
+        if request is None:
+            return False
+        return request.status == PENDING_STATUS and request.feature_id is None
 
     def _fetch_fitbit_data_with_retry(
         self,
@@ -625,6 +655,15 @@ class RequestFulfillmentService:
                 delay_seconds,
                 attempts + 1,
             )
+
+    def _rollback_repository_if_supported(self) -> None:
+        rollback = getattr(self._repository, "rollback", None)
+        if not callable(rollback):
+            return
+        try:
+            rollback()
+        except Exception:
+            logger.exception("Failed to rollback request repository session.")
 
 
 def _to_float(value: Any) -> float | None:

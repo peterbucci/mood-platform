@@ -247,6 +247,231 @@ def test_get_request_by_id_returns_404_when_missing(monkeypatch) -> None:
         db_session._session_factory.cache_clear()
 
 
+def test_delete_request_cancels_pending_request(monkeypatch) -> None:
+    with _temporary_database() as database_url:
+        _run_alembic_upgrade(database_url=database_url)
+        _configure_runtime_env(monkeypatch=monkeypatch, database_url=database_url)
+        _insert_request(
+            database_url=database_url,
+            request_id="req_cancel_pending",
+            user_id=CURRENT_USER_ID,
+            created_at=1700000401,
+            status="pending",
+            source="phone",
+            feature_id=None,
+        )
+
+        with TestClient(app) as client:
+            response = client.delete("/requests/req_cancel_pending")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "id": "req_cancel_pending",
+            "userId": CURRENT_USER_ID,
+            "createdAt": 1700000401,
+            "status": "canceled",
+            "source": "phone",
+            "featureId": None,
+        }
+
+        with psycopg.connect(database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT status, "featureId"
+                    FROM requests
+                    WHERE id = %s
+                    """,
+                    ("req_cancel_pending",),
+                )
+                row = cursor.fetchone()
+
+        assert row == ("canceled", None)
+        db_session._session_factory.cache_clear()
+
+
+def test_delete_request_is_idempotent_when_already_canceled(monkeypatch) -> None:
+    with _temporary_database() as database_url:
+        _run_alembic_upgrade(database_url=database_url)
+        _configure_runtime_env(monkeypatch=monkeypatch, database_url=database_url)
+        _insert_request(
+            database_url=database_url,
+            request_id="req_cancel_idempotent",
+            user_id=CURRENT_USER_ID,
+            created_at=1700000402,
+            status="canceled",
+            source="phone",
+            feature_id=None,
+        )
+
+        with TestClient(app) as client:
+            response = client.delete("/requests/req_cancel_idempotent")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "canceled"
+        assert response.json()["featureId"] is None
+
+        with psycopg.connect(database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT status, "featureId"
+                    FROM requests
+                    WHERE id = %s
+                    """,
+                    ("req_cancel_idempotent",),
+                )
+                row = cursor.fetchone()
+
+        assert row == ("canceled", None)
+        db_session._session_factory.cache_clear()
+
+
+def test_delete_request_rejects_fulfilled_request(monkeypatch) -> None:
+    with _temporary_database() as database_url:
+        _run_alembic_upgrade(database_url=database_url)
+        _configure_runtime_env(monkeypatch=monkeypatch, database_url=database_url)
+        _insert_feature(
+            database_url=database_url,
+            feature_id="feat_cancel_conflict",
+            user_id=CURRENT_USER_ID,
+            created_at=1700000403,
+            source="fitbit-pipeline",
+            data={"steps": 100},
+        )
+        _insert_request(
+            database_url=database_url,
+            request_id="req_cancel_conflict",
+            user_id=CURRENT_USER_ID,
+            created_at=1700000404,
+            status="fulfilled",
+            source="phone",
+            feature_id="feat_cancel_conflict",
+        )
+
+        with TestClient(app) as client:
+            response = client.delete("/requests/req_cancel_conflict")
+
+        assert response.status_code == 409
+        assert response.json() == {
+            "detail": "Request req_cancel_conflict is already fulfilled and cannot be canceled."
+        }
+
+        with psycopg.connect(database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT status, "featureId"
+                    FROM requests
+                    WHERE id = %s
+                    """,
+                    ("req_cancel_conflict",),
+                )
+                row = cursor.fetchone()
+
+        assert row == ("fulfilled", "feat_cancel_conflict")
+        db_session._session_factory.cache_clear()
+
+
+def test_delete_request_rejects_delete_feature_too_for_fulfilled_request(monkeypatch) -> None:
+    with _temporary_database() as database_url:
+        _run_alembic_upgrade(database_url=database_url)
+        _configure_runtime_env(monkeypatch=monkeypatch, database_url=database_url)
+        _insert_feature(
+            database_url=database_url,
+            feature_id="feat_cancel_conflict_2",
+            user_id=CURRENT_USER_ID,
+            created_at=1700000406,
+            source="fitbit-pipeline",
+            data={"steps": 100},
+        )
+        _insert_request(
+            database_url=database_url,
+            request_id="req_cancel_conflict_2",
+            user_id=CURRENT_USER_ID,
+            created_at=1700000407,
+            status="fulfilled",
+            source="phone",
+            feature_id="feat_cancel_conflict_2",
+        )
+
+        with TestClient(app) as client:
+            response = client.delete("/requests/req_cancel_conflict_2?deleteFeatureToo=true")
+
+        assert response.status_code == 409
+        assert response.json() == {
+            "detail": (
+                "Canceling fulfilled requests with deleteFeatureToo=true is not supported yet."
+            )
+        }
+
+        with psycopg.connect(database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT status, "featureId"
+                    FROM requests
+                    WHERE id = %s
+                    """,
+                    ("req_cancel_conflict_2",),
+                )
+                row = cursor.fetchone()
+
+        assert row == ("fulfilled", "feat_cancel_conflict_2")
+        db_session._session_factory.cache_clear()
+
+
+def test_delete_request_returns_404_for_missing_id(monkeypatch) -> None:
+    with _temporary_database() as database_url:
+        _run_alembic_upgrade(database_url=database_url)
+        _configure_runtime_env(monkeypatch=monkeypatch, database_url=database_url)
+
+        with TestClient(app) as client:
+            response = client.delete("/requests/not-found")
+
+        assert response.status_code == 404
+        assert response.json() == {"detail": "Request not-found was not found for current user."}
+        db_session._session_factory.cache_clear()
+
+
+def test_delete_request_returns_404_for_request_owned_by_other_user(monkeypatch) -> None:
+    with _temporary_database() as database_url:
+        _run_alembic_upgrade(database_url=database_url)
+        _configure_runtime_env(monkeypatch=monkeypatch, database_url=database_url)
+        _insert_request(
+            database_url=database_url,
+            request_id="req_other_owner",
+            user_id=OTHER_USER_ID,
+            created_at=1700000405,
+            status="pending",
+            source="phone",
+            feature_id=None,
+        )
+
+        with TestClient(app) as client:
+            response = client.delete("/requests/req_other_owner")
+
+        assert response.status_code == 404
+        assert response.json() == {
+            "detail": "Request req_other_owner was not found for current user."
+        }
+
+        with psycopg.connect(database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT status, "featureId"
+                    FROM requests
+                    WHERE id = %s
+                    """,
+                    ("req_other_owner",),
+                )
+                row = cursor.fetchone()
+
+        assert row == ("pending", None)
+        db_session._session_factory.cache_clear()
+
+
 def test_pending_count_reflects_pending_requests_and_decreases_when_fulfilled(monkeypatch) -> None:
     with _temporary_database() as database_url:
         _run_alembic_upgrade(database_url=database_url)
