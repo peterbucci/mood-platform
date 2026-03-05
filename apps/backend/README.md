@@ -107,8 +107,30 @@ Token persistence:
 
 - OAuth states and token records are persisted in:
   - `fitbit_oauth_states`
-  - `fitbit_oauth_connections`
+  - `fitbit_tokens`
 - Unlink removes the stored connection row for the owner user.
+
+## Fitbit Token Lifecycle
+
+Tokens are persisted durably in `fitbit_tokens` with:
+
+- `access_token`
+- `refresh_token`
+- `expires_at`
+- `scope`
+- optional `fitbit_user_id`
+
+Runtime token usage contract:
+
+1. Fitbit API callers should retrieve tokens through `FitbitTokenService.get_access_token(...)`.
+2. `get_access_token` refreshes proactively when token expiry is near (60s skew).
+3. `FitbitApiClient.fitbit_fetch(...)` retries once on `401` after refreshing tokens.
+4. Missing token state raises a typed not-connected error (`FitbitTokenNotConnectedError`).
+
+Required OAuth refresh env vars:
+
+- `FITBIT_CLIENT_ID`
+- `FITBIT_CLIENT_SECRET`
 
 ## Fulfillment Worker
 

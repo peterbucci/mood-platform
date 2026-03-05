@@ -91,6 +91,12 @@ Fitbit OAuth environment variables are also available in `.env.example`:
 - `FITBIT_CLIENT_SECRET`
 - `FITBIT_REDIRECT_URI`
 
+Token lifecycle behavior:
+
+- OAuth callback persists Fitbit tokens in `fitbit_tokens`.
+- Access tokens are retrieved through `FitbitTokenService.get_access_token(...)`.
+- Expired tokens refresh proactively and Fitbit `401` responses trigger one refresh retry.
+
 Create a new migration after model changes:
 
 ```bash
