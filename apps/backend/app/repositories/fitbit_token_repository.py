@@ -40,6 +40,7 @@ class FitbitTokenRepository:
                     refresh_token=refresh_token,
                     expires_at=expires_at,
                     scope=scope,
+                    needs_reauth=False,
                 )
                 .on_conflict_do_update(
                     index_elements=[FitbitToken.user_id],
@@ -49,6 +50,7 @@ class FitbitTokenRepository:
                         "refresh_token": refresh_token,
                         "expires_at": expires_at,
                         "scope": scope,
+                        "needs_reauth": False,
                         "updated_at": sa.func.now(),
                     },
                 )
@@ -89,6 +91,31 @@ class FitbitTokenRepository:
             raise FitbitTokenRepositoryError(
                 "Failed to load internal user by Fitbit user id."
             ) from exc
+
+    def set_needs_reauth(self, *, user_id: uuid.UUID, needs_reauth: bool) -> None:
+        try:
+            self._session.execute(
+                sa.update(FitbitToken)
+                .where(FitbitToken.user_id == user_id)
+                .values(
+                    needs_reauth=needs_reauth,
+                    updated_at=sa.func.now(),
+                )
+            )
+            self._session.commit()
+        except SQLAlchemyError as exc:
+            self._session.rollback()
+            raise FitbitTokenRepositoryError("Failed to update Fitbit reauth flag.") from exc
+
+    def is_reauth_required(self, *, user_id: uuid.UUID) -> bool:
+        try:
+            return bool(
+                self._session.execute(
+                    sa.select(FitbitToken.needs_reauth).where(FitbitToken.user_id == user_id)
+                ).scalar_one_or_none()
+            )
+        except SQLAlchemyError as exc:
+            raise FitbitTokenRepositoryError("Failed to load Fitbit reauth flag.") from exc
 
     def _ensure_user_exists(self, *, user_id: uuid.UUID) -> None:
         existing_user_id = self._session.execute(

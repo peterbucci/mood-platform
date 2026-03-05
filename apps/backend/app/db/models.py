@@ -36,6 +36,15 @@ class FeatureRequest(Base):
     status: Mapped[str] = mapped_column(sa.Text, nullable=False)
     feature_id: Mapped[str | None] = mapped_column("featureId", sa.Text)
     source: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    client_features_json: Mapped[str | None] = mapped_column("clientFeatures", sa.Text)
+    attempts: Mapped[int] = mapped_column(
+        sa.Integer,
+        nullable=False,
+        server_default=sa.text("0"),
+    )
+    next_attempt_at: Mapped[int | None] = mapped_column("nextAttemptAt", sa.Integer)
+    last_error_code: Mapped[int | None] = mapped_column("lastErrorCode", sa.Integer)
+    last_error_signal: Mapped[str | None] = mapped_column("lastErrorSignal", sa.Text)
 
 
 class Feature(Base):
@@ -47,6 +56,9 @@ class Feature(Base):
     created_at: Mapped[int] = mapped_column("createdAt", sa.Integer, nullable=False)
     source: Mapped[str] = mapped_column(sa.Text, nullable=False)
     data: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    source_timezone: Mapped[str | None] = mapped_column("sourceTimezone", sa.Text)
+    window_start: Mapped[datetime | None] = mapped_column("windowStart", sa.DateTime(timezone=True))
+    window_end: Mapped[datetime | None] = mapped_column("windowEnd", sa.DateTime(timezone=True))
 
 
 class WorkerLock(Base):
@@ -125,6 +137,11 @@ class FitbitToken(Base):
     access_token: Mapped[str] = mapped_column(sa.Text, nullable=False)
     refresh_token: Mapped[str] = mapped_column(sa.Text, nullable=False)
     scope: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    needs_reauth: Mapped[bool] = mapped_column(
+        sa.Boolean,
+        nullable=False,
+        server_default=sa.text("false"),
+    )
     expires_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),

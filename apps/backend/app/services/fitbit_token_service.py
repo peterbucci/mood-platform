@@ -101,6 +101,18 @@ class FitbitTokenService:
         except FitbitTokenRepositoryError as exc:
             raise FitbitTokenRefreshError("Failed to delete Fitbit token.") from exc
 
+    def mark_needs_reauth(self, *, user_id: uuid.UUID, required: bool) -> None:
+        try:
+            self._repository.set_needs_reauth(user_id=user_id, needs_reauth=required)
+        except FitbitTokenRepositoryError as exc:
+            raise FitbitTokenRefreshError("Failed to update Fitbit reauth requirement.") from exc
+
+    def is_reauth_required(self, *, user_id: uuid.UUID) -> bool:
+        try:
+            return self._repository.is_reauth_required(user_id=user_id)
+        except FitbitTokenRepositoryError as exc:
+            raise FitbitTokenRefreshError("Failed to check Fitbit reauth requirement.") from exc
+
     def refresh_token(self, *, user_id: uuid.UUID) -> object:
         self._assert_oauth_configured()
 
