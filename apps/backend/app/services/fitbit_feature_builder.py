@@ -5,6 +5,64 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
+from app.services.features import (
+    FEATURE_REGISTRY,
+    compute_acute_arousal_index,
+    compute_doomscrolling_score,
+    compute_evening_restlessness_score,
+    compute_low_sleep_high_activity_flag,
+    compute_morning_lethargy_score,
+    compute_overexertion_flag,
+    compute_recent_activity_x_time_of_day,
+    compute_stress_spike_flag,
+    derive_azm_intraday_metrics,
+    derive_breathing_metrics,
+    derive_calories_intraday_metrics,
+    derive_hrv_metrics,
+    derive_sleep_metrics,
+    derive_spo2_metrics,
+    derive_steps_intraday_metrics,
+    derive_steps_z_today,
+    derive_temp_metrics,
+    enrich_context_features,
+)
+from app.services.features import (
+    canonical_hrv_coverage as canonical_hrv_coverage_feature,
+)
+from app.services.features import (
+    compute_day_hr_stats as compute_day_hr_stats_feature,
+)
+from app.services.features import (
+    extract_nutrition_metrics as extract_nutrition_metrics_feature,
+)
+from app.services.features import (
+    extract_resting_heart_rate as extract_resting_heart_rate_feature,
+)
+from app.services.features import (
+    extract_resting_heart_rate_series as extract_resting_heart_rate_series_feature,
+)
+from app.services.features import (
+    features_from_activity as features_from_activity_feature,
+)
+from app.services.features import (
+    features_from_breathing_rate as features_from_breathing_rate_feature,
+)
+from app.services.features import (
+    features_from_hrv as features_from_hrv_feature,
+)
+from app.services.features import (
+    features_from_nutrition as features_from_nutrition_feature,
+)
+from app.services.features import (
+    features_from_spo2 as features_from_spo2_feature,
+)
+from app.services.features import (
+    features_from_temp as features_from_temp_feature,
+)
+from app.services.features import (
+    features_from_water as features_from_water_feature,
+)
+
 MISSING_SIGNAL_MARKER = "__missing"
 
 
@@ -17,7 +75,19 @@ def build_feature_payload(
 ) -> dict[str, Any]:
     notes: list[str] = []
     anchor = anchor_datetime or datetime.now(tz=UTC)
-    passthrough_client_features = _filtered_client_features(client_features)
+    raw_client_features = dict(client_features or {}) if isinstance(client_features, dict) else {}
+    source_timezone = _extract_source_timezone(
+        client_features=raw_client_features,
+        anchor_datetime=anchor,
+    )
+    enriched_context_features, context_notes = enrich_context_features(
+        client_features=raw_client_features,
+        anchor_datetime=anchor,
+        source_timezone=source_timezone,
+    )
+    for context_note in context_notes:
+        _add_note(notes, context_note)
+    passthrough_client_features = _filtered_client_features(enriched_context_features)
 
     activity_blob = _signal_blob(
         raw_fitbit_data=raw_fitbit_data,
@@ -226,182 +296,40 @@ def build_feature_payload(
         "clientFeatures": passthrough_client_features,
         "notes": notes,
     }
+    FEATURE_REGISTRY.append_missing_notes(payload=payload, notes=notes)
     return payload
 
 
 def features_from_activity(*, blob: dict[str, Any] | None) -> dict[str, int | float | None]:
-    output = {
-        "steps_count": None,
-        "calories_out_kcal": None,
-        "active_zone_minutes": None,
-    }
-    payload = _blob_payload(blob)
-    summary = payload.get("summary") if isinstance(payload.get("summary"), Mapping) else {}
-    output["steps_count"] = _to_int(summary.get("steps"))
-    output["calories_out_kcal"] = _to_int(summary.get("caloriesOut"))
-
-    zone_minutes = _to_int(summary.get("activeZoneMinutes"))
-    if zone_minutes is not None:
-        output["active_zone_minutes"] = zone_minutes
-        return output
-
-    very = _to_int(summary.get("veryActiveMinutes"))
-    fairly = _to_int(summary.get("fairlyActiveMinutes"))
-    lightly = _to_int(summary.get("lightlyActiveMinutes"))
-    if any(value is not None for value in (very, fairly, lightly)):
-        output["active_zone_minutes"] = (very or 0) + (fairly or 0) + (lightly or 0)
-    return output
+    return features_from_activity_feature(blob=blob)
 
 
 def features_from_hrv(*, blob: dict[str, Any] | None, notes: list[str]) -> dict[str, float | None]:
-    output = {
-        "daily_rmssd": None,
-        "deep_rmssd": None,
-        "coverage": None,
-    }
-    if _is_missing_blob(blob):
-        _add_note(notes, "missing_hrv")
-        return output
-
-    payload = _blob_payload(blob)
-    value = _extract_first_nested_dict(payload=payload, list_key="hrv", value_key="value")
-    if not value:
-        value = payload.get("value") if isinstance(payload.get("value"), Mapping) else {}
-
-    output["daily_rmssd"] = _to_float(value.get("dailyRmssd") or value.get("rmssd"))
-    output["deep_rmssd"] = _to_float(value.get("deepRmssd") or value.get("deepSleepRmssd"))
-    output["coverage"] = _to_float(value.get("coverage"))
-
-    # Node parity: "coverage" is optional and should not by itself trigger partial_hrv.
-    core_values = [output["daily_rmssd"], output["deep_rmssd"]]
-    if all(v is None for v in core_values):
-        _add_note(notes, "partial_hrv")
-    elif any(v is None for v in core_values):
-        _add_note(notes, "partial_hrv")
-    return output
+    return features_from_hrv_feature(blob=blob, notes=notes)
 
 
 def features_from_breathing_rate(
     *, blob: dict[str, Any] | None, notes: list[str]
 ) -> dict[str, float | None]:
-    output = {"sleeping_br": None}
-    if _is_missing_blob(blob):
-        if _blob_reason(blob) in {"forbidden", "forbidden_scope", "needs_reauth"}:
-            _add_note(notes, "missing_breathing_rate_forbidden")
-        else:
-            _add_note(notes, "missing_breathing_rate")
-        return output
-
-    payload = _blob_payload(blob)
-    value = _extract_first_nested_dict(payload=payload, list_key="br", value_key="value")
-    if not value:
-        value = payload
-    output["sleeping_br"] = _to_float(
-        value.get("breathingRate")
-        or value.get("sleepingBreathingRate")
-        or _get_nested(value, "deepSleepSummary", "breathingRate")
-    )
-    if output["sleeping_br"] is None:
-        _add_note(notes, "partial_breathing_rate")
-    return output
+    return features_from_breathing_rate_feature(blob=blob, notes=notes)
 
 
 def features_from_spo2(*, blob: dict[str, Any] | None, notes: list[str]) -> dict[str, float | None]:
-    output = {
-        "avg_spo2": None,
-        "min_spo2": None,
-        "max_spo2": None,
-    }
-    if _is_missing_blob(blob):
-        _add_note(notes, "missing_spo2")
-        return output
-
-    payload = _blob_payload(blob)
-    value = _extract_first_nested_dict(payload=payload, list_key="spo2", value_key="value")
-    if not value:
-        value = payload.get("value") if isinstance(payload.get("value"), Mapping) else payload
-
-    output["avg_spo2"] = _to_float(value.get("avg") or value.get("average"))
-    output["min_spo2"] = _to_float(value.get("min"))
-    output["max_spo2"] = _to_float(value.get("max"))
-
-    if all(v is None for v in output.values()):
-        _add_note(notes, "partial_spo2")
-    elif any(v is None for v in output.values()):
-        _add_note(notes, "partial_spo2")
-    return output
+    return features_from_spo2_feature(blob=blob, notes=notes)
 
 
 def features_from_temp(*, blob: dict[str, Any] | None, notes: list[str]) -> dict[str, float | None]:
-    output = {"skin_temp_deviation_c": None}
-    if _is_missing_blob(blob):
-        _add_note(notes, "missing_temp")
-        return output
-
-    payload = _blob_payload(blob)
-    value = _extract_first_nested_dict(payload=payload, list_key="tempSkin", value_key="value")
-    if not value:
-        value = payload.get("value") if isinstance(payload.get("value"), Mapping) else payload
-
-    output["skin_temp_deviation_c"] = _to_float(
-        value.get("nightlyRelative")
-        or value.get("temperatureVariation")
-        or value.get("skinTempDeviation")
-    )
-    if output["skin_temp_deviation_c"] is None:
-        _add_note(notes, "partial_temp")
-    return output
+    return features_from_temp_feature(blob=blob, notes=notes)
 
 
 def features_from_nutrition(
     *, blob: dict[str, Any] | None, notes: list[str]
 ) -> dict[str, int | float | None]:
-    output = {
-        "calories_in_kcal": None,
-        "carbs_g": None,
-        "fat_g": None,
-        "protein_g": None,
-    }
-    if _is_missing_blob(blob):
-        _add_note(notes, "missing_nutrition")
-        return output
-
-    payload = _blob_payload(blob)
-    summary = payload.get("summary") if isinstance(payload.get("summary"), Mapping) else {}
-    output["calories_in_kcal"] = _to_int(summary.get("calories"))
-    output["carbs_g"] = _to_float(summary.get("carbs"))
-    output["fat_g"] = _to_float(summary.get("fat"))
-    output["protein_g"] = _to_float(summary.get("protein"))
-
-    if all(v is None for v in output.values()):
-        _add_note(notes, "partial_nutrition")
-    elif any(v is None for v in output.values()):
-        _add_note(notes, "partial_nutrition")
-    return output
+    return features_from_nutrition_feature(blob=blob, notes=notes)
 
 
 def features_from_water(*, blob: dict[str, Any] | None, notes: list[str]) -> dict[str, int | None]:
-    output = {"water_ml": None}
-    if _is_missing_blob(blob):
-        _add_note(notes, "missing_water")
-        return output
-
-    payload = _blob_payload(blob)
-    summary = payload.get("summary") if isinstance(payload.get("summary"), Mapping) else {}
-    output["water_ml"] = _to_int(summary.get("water"))
-    if output["water_ml"] is None:
-        water_entries = payload.get("water")
-        if isinstance(water_entries, list) and water_entries:
-            for entry in water_entries:
-                if isinstance(entry, Mapping):
-                    amount = _to_float(entry.get("amount"))
-                    if amount is not None:
-                        output["water_ml"] = int(amount)
-                        break
-
-    if output["water_ml"] is None:
-        _add_note(notes, "partial_water")
-    return output
+    return features_from_water_feature(blob=blob, notes=notes)
 
 
 def _canonical_hrv_coverage(
@@ -409,15 +337,10 @@ def _canonical_hrv_coverage(
     hrv_features: dict[str, float | None],
     derived_features: dict[str, Any],
 ) -> float | None:
-    intraday_coverage_mean = _to_float(derived_features.get("hrvIntradayCoverageMean"))
-    if intraday_coverage_mean is not None:
-        return intraday_coverage_mean
-
-    # Fallback rule: when daily RMSSD exists but intraday coverage is unavailable,
-    # expose a conservative synthetic coverage so top-level HRV remains non-null.
-    if _to_float(hrv_features.get("daily_rmssd")) is not None:
-        return 0.5
-    return _to_float(hrv_features.get("coverage"))
+    return canonical_hrv_coverage_feature(
+        hrv_features=hrv_features,
+        derived_features=derived_features,
+    )
 
 
 def build_derived_features(
@@ -453,40 +376,21 @@ def build_derived_features(
 ) -> dict[str, Any]:
     derived = _default_derived_features()
     derived["hourOfDay"] = anchor_datetime.hour
-    derived["dayOfWeek"] = anchor_datetime.weekday()
-    derived["isWeekend"] = anchor_datetime.weekday() >= 5
+    derived["dayOfWeek"] = (anchor_datetime.weekday() + 1) % 7
+    derived["isWeekend"] = derived["dayOfWeek"] in {0, 6}
 
-    steps_series = _extract_intraday_series(
-        blob=steps_intraday_blob,
-        dataset_key="activities-steps-intraday",
-        value_key="value",
+    derived.update(
+        derive_steps_intraday_metrics(
+            steps_intraday_blob=steps_intraday_blob,
+            notes=notes,
+        )
     )
-    if not steps_series:
-        _add_note(notes, "missing_intraday_steps")
-    else:
-        derived["stepsLast5m"] = _window_sum(steps_series, 5)
-        derived["stepsLast15m"] = _window_sum(steps_series, 15)
-        derived["stepsLast30m"] = _window_sum(steps_series, 30)
-        derived["stepsLast60m"] = _window_sum(steps_series, 60)
-        derived["stepsLast3h"] = _window_sum(steps_series, 180)
-        derived["stepBurst5m"] = _rolling_max_sum(steps_series, 5)
-        derived["zeroStreakMax60m"] = _zero_streak_max(steps_series, 60)
-        derived["stepsSlopeLast60m"] = _slope(steps_series[-60:])
-        recent_5 = _window_sum(steps_series, 5)
-        previous_10 = _window_sum(steps_series[-15:-5], 10)
-        if recent_5 is not None and previous_10 is not None:
-            derived["stepsAccel5to15m"] = recent_5 - (previous_10 / 2.0)
-        derived["sedentaryMinsLast3h"] = _zero_count(steps_series, 180)
-
-    calories_series = _extract_intraday_series(
-        blob=calories_intraday_blob,
-        dataset_key="activities-calories-intraday",
-        value_key="value",
+    derived.update(
+        derive_calories_intraday_metrics(
+            calories_intraday_blob=calories_intraday_blob,
+            notes=notes,
+        )
     )
-    if not calories_series:
-        _add_note(notes, "missing_intraday_calories")
-    else:
-        derived["caloriesOutLast3h"] = _window_sum(calories_series, 180)
 
     activity_payload = _blob_payload(activity_blob)
     activity_summary = (
@@ -504,34 +408,16 @@ def build_derived_features(
             ]
         )
     derived["caloriesOutToday"] = _to_int(activity_summary.get("caloriesOut"))
-    derived["restingHR"] = _extract_resting_heart_rate(
+    derived["restingHR"] = extract_resting_heart_rate_feature(
         activity_blob=activity_blob,
         heart_blob=heart_blob,
     )
-
-    azm_total_series, azm_fat_series, azm_cardio_series, azm_peak_series = _extract_azm_series(
-        blob=azm_intraday_blob
+    derived.update(
+        derive_azm_intraday_metrics(
+            azm_intraday_blob=azm_intraday_blob,
+            notes=notes,
+        )
     )
-    if not azm_total_series:
-        _add_note(notes, "missing_intraday_azm")
-    else:
-        derived["azmLast30m"] = _window_sum(azm_total_series, 30)
-        derived["azmLast60m"] = _window_sum(azm_total_series, 60)
-        derived["azmFatBurnLast30m"] = _window_sum(azm_fat_series, 30)
-        derived["azmCardioLast30m"] = _window_sum(azm_cardio_series, 30)
-        derived["azmPeakLast30m"] = _window_sum(azm_peak_series, 30)
-        derived["azmIntensityMinutes30m"] = _sum_non_null(
-            [derived["azmCardioLast30m"], derived["azmPeakLast30m"]]
-        )
-        derived["azmIntensityMinutes60m"] = _sum_non_null(
-            [_window_sum(azm_cardio_series, 60), _window_sum(azm_peak_series, 60)]
-        )
-        derived["azmZeroStreakMax60m"] = _zero_streak_max(azm_total_series, 60)
-        derived["azmSlopeLast60m"] = _slope(azm_total_series[-60:])
-        derived["azmSpike30m"] = _rolling_max_sum(azm_total_series, 30)
-        derived["azmFatBurnMinutes"] = _sum_non_null(azm_fat_series)
-        derived["azmCardioMinutes"] = _sum_non_null(azm_cardio_series)
-        derived["azmPeakMinutes"] = _sum_non_null(azm_peak_series)
 
     heart_series = _extract_intraday_series(
         blob=heart_intraday_blob,
@@ -558,7 +444,7 @@ def build_derived_features(
         derived["hrStdLast60m"] = _stddev(heart_series[-60:])
         derived["hrSlopeLast60m"] = _slope(heart_series[-60:])
 
-    rhr_series = _extract_resting_heart_rate_series(heart_7d_blob=heart_7d_blob)
+    rhr_series = extract_resting_heart_rate_series_feature(heart_7d_blob=heart_7d_blob)
     if rhr_series:
         derived["rhrMean7d"] = _window_avg(rhr_series, len(rhr_series))
         derived["rhrStd7d"] = _stddev(rhr_series)
@@ -581,135 +467,47 @@ def build_derived_features(
             "rhrStd7d"
         ]
 
-    sleep_payload = _blob_payload(sleep_blob)
-    primary_sleep = _primary_sleep_entry(sleep_payload)
-    if primary_sleep is None:
-        _add_note(notes, "missing_sleep")
-    else:
-        minutes_asleep = _to_float(primary_sleep.get("minutesAsleep"))
-        if minutes_asleep is not None:
-            derived["sleepDurationLastNightHrs"] = round(minutes_asleep / 60.0, 3)
-        derived["sleepEfficiency"] = _to_float(primary_sleep.get("efficiency"))
-        levels_summary = _get_nested(primary_sleep, "levels", "summary")
-        awake_minutes = _to_float(primary_sleep.get("minutesAwake"))
-        if awake_minutes is None:
-            awake_minutes = _to_float(_get_nested(levels_summary, "wake", "minutes"))
-        if awake_minutes is not None and awake_minutes > 0:
-            derived["wasoMinutes"] = awake_minutes
-        deep_minutes = _to_float(_get_nested(levels_summary, "deep", "minutes"))
-        rem_minutes = _to_float(_get_nested(levels_summary, "rem", "minutes"))
-        total_minutes = _to_float(primary_sleep.get("minutesAsleep"))
-        if total_minutes and total_minutes > 0:
-            if rem_minutes is not None:
-                derived["remRatio"] = rem_minutes / total_minutes
-            if deep_minutes is not None:
-                derived["deepRatio"] = deep_minutes / total_minutes
-        start_time = _parse_datetime(primary_sleep.get("startTime"))
-        end_time = _parse_datetime(primary_sleep.get("endTime"))
-        if start_time is not None:
-            derived["sleepOnsetLocalHour"] = start_time.hour
-        if end_time is not None:
-            derived["wakeTimeLocalHour"] = end_time.hour
-        total_window_minutes = (total_minutes or 0.0) + (awake_minutes or 0.0)
-        if awake_minutes is not None and awake_minutes > 0 and total_window_minutes > 0:
-            fragmentation_ratio = awake_minutes / total_window_minutes
-            derived["sleepFragmentationScore"] = min(1.0, max(0.0, fragmentation_ratio))
-        elif awake_minutes is None or total_window_minutes <= 0:
-            _add_note(notes, "missing_sleep_fragmentation_detail")
-
-    sleep_entries = _extract_sleep_entries(blob=sleep_range_blob)
-    if sleep_entries:
-        bed_hours = [
-            _parse_datetime(entry.get("startTime")).hour
-            for entry in sleep_entries
-            if _parse_datetime(entry.get("startTime")) is not None
-        ]
-        durations_hours = [
-            (_to_float(entry.get("minutesAsleep")) or 0) / 60.0
-            for entry in sleep_entries
-            if _to_float(entry.get("minutesAsleep")) is not None
-        ]
-        if len(bed_hours) >= 2:
-            derived["bedtimeStdDev7d"] = _stddev([float(hour) for hour in bed_hours])
-        if durations_hours:
-            avg_sleep = statistics.mean(durations_hours)
-            derived["sleepDebtHrs"] = max(0.0, 8.0 - avg_sleep)
-    else:
-        _add_note(notes, "missing_sleep_range")
-
-    hrv_value = features_from_hrv(blob=hrv_blob, notes=notes)
-    if hrv_value["daily_rmssd"] is not None:
-        derived["hrvRmssdDaily"] = hrv_value["daily_rmssd"]
-    if hrv_value["deep_rmssd"] is not None:
-        derived["hrvDeepRmssdDaily"] = hrv_value["deep_rmssd"]
-
-    hrv_range_values = _extract_hrv_daily_values(blob=hrv_range_blob)
-    if hrv_range_values:
-        derived["hrvRmssd7dAvg"] = statistics.mean(hrv_range_values)
-        if derived["hrvRmssdDaily"] is not None:
-            derived["hrvRmssdDeviationFrom7d"] = derived["hrvRmssdDaily"] - derived["hrvRmssd7dAvg"]
-    else:
-        _add_note(notes, "missing_hrv_range")
-
-    hrv_intraday = _extract_hrv_intraday_values(blob=hrv_all_blob)
-    if hrv_intraday["rmssd"]:
-        derived["hrvIntradayRmssdMean"] = statistics.mean(hrv_intraday["rmssd"])
-        derived["hrvIntradayRmssdStdDev"] = _stddev(hrv_intraday["rmssd"])
-    if hrv_intraday["lf"]:
-        derived["hrvIntradayLfMean"] = statistics.mean(hrv_intraday["lf"])
-    if hrv_intraday["hf"]:
-        derived["hrvIntradayHfMean"] = statistics.mean(hrv_intraday["hf"])
-    if hrv_intraday["lf_hf_ratio"]:
-        derived["hrvIntradayLfHfRatioMean"] = statistics.mean(hrv_intraday["lf_hf_ratio"])
-    if hrv_intraday["coverage"]:
-        derived["hrvIntradayCoverageMean"] = statistics.mean(hrv_intraday["coverage"])
-    if not any(hrv_intraday.values()):
-        _add_note(notes, "missing_hrv_all")
-
-    br_value = _extract_breathing_metrics(
-        blob=breathing_rate_blob,
-        all_blob=breathing_rate_all_blob,
+    derived.update(
+        derive_sleep_metrics(
+            sleep_blob=sleep_blob,
+            sleep_range_blob=sleep_range_blob,
+            notes=notes,
+        )
     )
-    if br_value["brFullNight"] is not None:
-        derived["brFullNight"] = br_value["brFullNight"]
-    derived["brDeepSleep"] = br_value["brDeepSleep"]
-    derived["brRemSleep"] = br_value["brRemSleep"]
-    derived["brLightSleep"] = br_value["brLightSleep"]
-    br_range_values = _extract_breathing_range_values(blob=breathing_rate_range_blob)
-    if br_range_values:
-        derived["brFullNight7dAvg"] = statistics.mean(br_range_values)
-        if derived["brFullNight"] is not None:
-            derived["brFullNightDeviationFrom7d"] = (
-                derived["brFullNight"] - derived["brFullNight7dAvg"]
-            )
-    else:
-        _add_note(notes, "missing_breathing_rate_range")
 
-    spo2_metrics = features_from_spo2(blob=spo2_blob, notes=notes)
-    derived["spo2Avg"] = spo2_metrics["avg_spo2"]
-    derived["spo2Min"] = spo2_metrics["min_spo2"]
-    derived["spo2Max"] = spo2_metrics["max_spo2"]
-    if spo2_metrics["min_spo2"] is not None and spo2_metrics["max_spo2"] is not None:
-        derived["spo2Range"] = spo2_metrics["max_spo2"] - spo2_metrics["min_spo2"]
-    spo2_range_values = _extract_spo2_range_values(blob=spo2_range_blob)
-    if spo2_range_values:
-        derived["spo2Avg7dAvg"] = statistics.mean(spo2_range_values)
-        if derived["spo2Avg"] is not None:
-            derived["spo2AvgDeviationFrom7d"] = derived["spo2Avg"] - derived["spo2Avg7dAvg"]
-    elif _blob_reason(spo2_range_blob) != "disabled_intraday":
-        _add_note(notes, "missing_spo2_range")
+    derived.update(
+        derive_hrv_metrics(
+            hrv_blob=hrv_blob,
+            hrv_range_blob=hrv_range_blob,
+            hrv_all_blob=hrv_all_blob,
+            notes=notes,
+        )
+    )
 
-    temp_metrics = features_from_temp(blob=temp_blob, notes=notes)
-    derived["tempSkinNightlyRelative"] = temp_metrics["skin_temp_deviation_c"]
-    temp_range_values = _extract_temp_range_values(blob=temp_range_blob)
-    if temp_range_values:
-        derived["tempSkinNightlyRelative7dAvg"] = statistics.mean(temp_range_values)
-        if derived["tempSkinNightlyRelative"] is not None:
-            derived["tempSkinNightlyRelativeDeviationFrom7d"] = (
-                derived["tempSkinNightlyRelative"] - derived["tempSkinNightlyRelative7dAvg"]
-            )
-    else:
-        _add_note(notes, "missing_temp_range")
+    derived.update(
+        derive_breathing_metrics(
+            breathing_rate_blob=breathing_rate_blob,
+            breathing_rate_all_blob=breathing_rate_all_blob,
+            breathing_rate_range_blob=breathing_rate_range_blob,
+            notes=notes,
+        )
+    )
+
+    derived.update(
+        derive_spo2_metrics(
+            spo2_blob=spo2_blob,
+            spo2_range_blob=spo2_range_blob,
+            notes=notes,
+        )
+    )
+
+    derived.update(
+        derive_temp_metrics(
+            temp_blob=temp_blob,
+            temp_range_blob=temp_range_blob,
+            notes=notes,
+        )
+    )
 
     exercise = _extract_latest_exercise_metrics(
         blob=latest_exercise_blob,
@@ -726,39 +524,88 @@ def build_derived_features(
     ):
         _add_note(notes, "missing_latest_exercise")
 
-    nutrition = _extract_nutrition_metrics(nutrition_blob=nutrition_blob, water_blob=water_blob)
+    nutrition = extract_nutrition_metrics_feature(
+        nutrition_blob=nutrition_blob,
+        water_blob=water_blob,
+    )
     derived.update(nutrition)
 
-    derived["acuteArousalIndex"] = _acute_arousal_index(
+    derived["acuteArousalIndex"] = compute_acute_arousal_index(
+        hr_delta_5m=_to_float(derived.get("hrDelta5m")),
+        hr_slope_last_30m=_to_float(derived.get("hrSlopeLast30m")),
         hr_z_now=_to_float(derived.get("hrZNow")),
-        sleep_debt_hours=_to_float(derived.get("sleepDebtHrs")),
+        step_burst_5m=_to_float(derived.get("stepBurst5m")),
+        steps_last_15m=_to_float(derived.get("stepsLast15m")),
+        zero_streak_max_60m=_to_float(derived.get("zeroStreakMax60m")),
+        azm_spike_30m=_to_float(derived.get("azmSpike30m")),
+        post_exercise_window_90m=_to_bool(derived.get("postExerciseWindow90m")),
+        sleep_duration_last_night_hrs=_to_float(derived.get("sleepDurationLastNightHrs")),
     )
-    if _to_float(derived.get("stepsLast60m")) is not None:
-        derived["recentActivityXTimeOfDay"] = _to_float(derived.get("stepsLast60m")) * (
-            anchor_datetime.hour / 24.0
-        )
-    if (
-        _to_float(derived.get("sleepDurationLastNightHrs")) is not None
-        and _to_float(derived.get("stepsLast3h")) is not None
-    ):
-        derived["lowSleepHighActivityFlag"] = (
-            _to_float(derived.get("sleepDurationLastNightHrs")) < 6.0
-            and _to_float(derived.get("stepsLast3h")) > 500
-        )
-    if _to_float(derived.get("azmToday")) is not None:
-        derived["overexertionFlag"] = _to_float(derived.get("azmToday")) > 120
-    if _to_float(derived.get("hrZNow")) is not None:
-        derived["stressSpikeFlag"] = _to_float(derived.get("hrZNow")) > 1.5
-    if _to_float(derived.get("stepsLast60m")) is not None:
-        derived["eveningRestlessnessScore"] = _compute_evening_restlessness_score(
-            anchor_hour=anchor_datetime.hour,
-            steps_last_60m=_to_float(derived.get("stepsLast60m")),
-        )
-        if anchor_datetime.hour <= 11 and _to_float(derived.get("stepsLast60m")) is not None:
-            derived["morningLethargyScore"] = max(
-                0.0, 1.0 - (_to_float(derived.get("stepsLast60m")) / 200.0)
-            )
-    derived["doomscrollingScore"] = _to_float(client_features.get("doomscrollingScore"))
+    derived["recentActivityXTimeOfDay"] = compute_recent_activity_x_time_of_day(
+        hour_of_day=_to_int(derived.get("hourOfDay")),
+        is_weekend=_to_bool(derived.get("isWeekend")),
+        steps_last_30m=_to_float(derived.get("stepsLast30m")),
+        steps_last_60m=_to_float(derived.get("stepsLast60m")),
+        azm_last_30m=_to_float(derived.get("azmLast30m")),
+        azm_last_60m=_to_float(derived.get("azmLast60m")),
+        zero_streak_max_60m=_to_float(derived.get("zeroStreakMax60m")),
+        steps_z_today=_to_float(derived.get("stepsZToday")),
+        post_exercise_window_90m=_to_bool(derived.get("postExerciseWindow90m")),
+        hr_z_now=_to_float(derived.get("hrZNow")),
+        hr_z_last_15m=_to_float(derived.get("hrZLast15m")),
+    )
+    hours_since_last_exercise = None
+    if _to_float(derived.get("timeSinceLastExerciseMin")) is not None:
+        hours_since_last_exercise = _to_float(derived.get("timeSinceLastExerciseMin")) / 60.0
+    low_sleep_high_activity_flag = compute_low_sleep_high_activity_flag(
+        sleep_duration_last_night_hrs=_to_float(derived.get("sleepDurationLastNightHrs")),
+        sleep_debt_hrs=_to_float(derived.get("sleepDebtHrs")),
+        steps_z_today=_to_float(derived.get("stepsZToday")),
+        azm_today=_to_float(derived.get("azmToday")),
+        last_exercise_duration_minutes=_to_float(derived.get("lastExerciseDurationMinutes")),
+        hours_since_last_exercise=hours_since_last_exercise,
+        hr_z_now=_to_float(derived.get("hrZNow")),
+    )
+    derived["lowSleepHighActivityFlag"] = low_sleep_high_activity_flag
+    derived["overexertionFlag"] = compute_overexertion_flag(
+        low_sleep_high_activity_flag=low_sleep_high_activity_flag,
+        sleep_duration_last_night_hrs=_to_float(derived.get("sleepDurationLastNightHrs")),
+        sleep_debt_hrs=_to_float(derived.get("sleepDebtHrs")),
+        azm_today=_to_float(derived.get("azmToday")),
+        hours_since_last_exercise=hours_since_last_exercise,
+        last_exercise_duration_minutes=_to_float(derived.get("lastExerciseDurationMinutes")),
+    )
+    derived["stressSpikeFlag"] = compute_stress_spike_flag(
+        hr_z_now=_to_float(derived.get("hrZNow")),
+        hr_z_last_15m=_to_float(derived.get("hrZLast15m")),
+        hr_delta_5m=_to_float(derived.get("hrDelta5m")),
+        hr_delta_15m=_to_float(derived.get("hrDelta15m")),
+        hr_slope_last_30m=_to_float(derived.get("hrSlopeLast30m")),
+        post_exercise_window_90m=_to_bool(derived.get("postExerciseWindow90m")),
+    )
+    derived["eveningRestlessnessScore"] = compute_evening_restlessness_score(
+        hour_of_day=_to_int(derived.get("hourOfDay")),
+        steps_last_60m=_to_float(derived.get("stepsLast60m")),
+        azm_last_60m=_to_float(derived.get("azmLast60m")),
+        azm_last_30m=_to_float(derived.get("azmLast30m")),
+        hr_z_now=_to_float(derived.get("hrZNow")),
+        hr_z_last_15m=_to_float(derived.get("hrZLast15m")),
+    )
+    derived["morningLethargyScore"] = compute_morning_lethargy_score(
+        hour_of_day=_to_int(derived.get("hourOfDay")),
+        steps_last_60m=_to_float(derived.get("stepsLast60m")),
+        sleep_debt_hrs=_to_float(derived.get("sleepDebtHrs")),
+        hr_z_now=_to_float(derived.get("hrZNow")),
+        hr_z_last_15m=_to_float(derived.get("hrZLast15m")),
+    )
+    derived["doomscrollingScore"] = compute_doomscrolling_score(
+        hour_of_day=_to_int(derived.get("hourOfDay")),
+        sedentary_mins_last_3h=_to_float(derived.get("sedentaryMinsLast3h")),
+        steps_last_30m=_to_float(derived.get("stepsLast30m")),
+        steps_last_60m=_to_float(derived.get("stepsLast60m")),
+        snack_calories_fraction=_to_float(derived.get("snackCaloriesFraction")),
+        client_doomscrolling_score=client_features.get("doomscrollingScore"),
+    )
     derived["daylightNowFlag"] = _to_bool(client_features.get("daylightNowFlag"))
     derived["daylightMinsRemaining"] = _to_float(client_features.get("daylightMinsRemaining"))
 
@@ -803,17 +650,16 @@ def build_derived_features(
         if derived["outdoorAQI"] is None:
             _add_note(notes, "partial_air_quality")
 
-    steps_7d_values = _extract_steps_7d_values(blob=steps_7d_blob)
-    if steps_7d_values and _to_float(derived.get("stepsLast3h")) is not None:
-        steps_today = _to_float(activity_summary.get("steps"))
-        if steps_today is None:
-            steps_today = _to_float(derived.get("stepsLast3h"))
-        mean_7d = statistics.mean(steps_7d_values)
-        std_7d = _stddev(steps_7d_values)
-        if steps_today is not None and std_7d not in (None, 0):
-            derived["stepsZToday"] = (steps_today - mean_7d) / std_7d
-    else:
-        _add_note(notes, "missing_steps_7d")
+    steps_today = _to_float(activity_summary.get("steps"))
+    if steps_today is None:
+        steps_today = _to_float(derived.get("stepsLast3h"))
+    derived.update(
+        derive_steps_z_today(
+            steps_7d_blob=steps_7d_blob,
+            steps_today=steps_today,
+            notes=notes,
+        )
+    )
 
     derived["activityInertia"] = _to_float(derived.get("stepsSlopeLast60m"))
 
@@ -917,7 +763,7 @@ def _legacy_or_derived_heart_rate_section(
     if not intraday_values:
         _add_note(notes, "missing_intraday_hr_day_stats")
         return {"avg_bpm": None, "min_bpm": None, "max_bpm": None}
-    avg_bpm, min_bpm, max_bpm = compute_day_hr_stats(intraday_values)
+    avg_bpm, min_bpm, max_bpm = compute_day_hr_stats_feature(intraday_values)
     return {
         "avg_bpm": avg_bpm,
         "min_bpm": min_bpm,
@@ -1301,26 +1147,15 @@ def _window_max(values: list[float], window: int) -> float | None:
     return float(max(slice_values))
 
 
-def compute_day_hr_stats(
-    intraday_hr_series: list[float],
-) -> tuple[float | None, float | None, float | None]:
-    if not intraday_hr_series:
-        return (None, None, None)
-    return (
-        float(sum(intraday_hr_series) / len(intraday_hr_series)),
-        float(min(intraday_hr_series)),
-        float(max(intraday_hr_series)),
-    )
-
-
-def _compute_evening_restlessness_score(
-    *,
-    anchor_hour: int,
-    steps_last_60m: float | None,
-) -> float | None:
-    if steps_last_60m is None or anchor_hour < 20:
-        return None
-    return steps_last_60m / 200.0
+def _extract_source_timezone(*, client_features: dict[str, Any], anchor_datetime: datetime) -> str:
+    for key in ("source_timezone", "timezone", "tz", "timeZone"):
+        value = client_features.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    anchor_tz = getattr(anchor_datetime.tzinfo, "key", None)
+    if isinstance(anchor_tz, str) and anchor_tz.strip():
+        return anchor_tz.strip()
+    return "UTC"
 
 
 def _rolling_max_sum(values: list[float], window: int) -> float | None:
@@ -1397,124 +1232,6 @@ def _sum_non_null(values: list[float | int | None]) -> float | int | None:
     return float(sum(float(value) for value in numeric_values))
 
 
-def _extract_resting_heart_rate(
-    *,
-    activity_blob: dict[str, Any] | None,
-    heart_blob: dict[str, Any] | None,
-) -> int | None:
-    heart_payload = _blob_payload(heart_blob)
-    activities_heart = heart_payload.get("activities-heart")
-    if isinstance(activities_heart, list):
-        for entry in activities_heart:
-            if not isinstance(entry, Mapping):
-                continue
-            value = entry.get("value")
-            if not isinstance(value, Mapping):
-                continue
-            resting = _to_int(value.get("restingHeartRate"))
-            if resting is not None:
-                return resting
-
-    activity_payload = _blob_payload(activity_blob)
-    summary = activity_payload.get("summary")
-    if isinstance(summary, Mapping):
-        return _to_int(summary.get("restingHeartRate"))
-    return None
-
-
-def _extract_azm_series(
-    *,
-    blob: dict[str, Any] | None,
-) -> tuple[list[float], list[float], list[float], list[float]]:
-    payload = _blob_payload(blob)
-    dataset = _extract_azm_dataset(payload=payload)
-    if not dataset:
-        return [], [], [], []
-
-    total: list[float] = []
-    fat: list[float] = []
-    cardio: list[float] = []
-    peak: list[float] = []
-    for point in dataset:
-        if not isinstance(point, Mapping):
-            continue
-        value = point.get("value")
-        normalized_value = value if isinstance(value, Mapping) else point
-        total_value = _to_float(
-            normalized_value.get("activeZoneMinutes")
-            or normalized_value.get("value")
-            or normalized_value.get("minutes")
-        )
-        fat_value = _to_float(
-            normalized_value.get("fatBurnActiveZoneMinutes") or normalized_value.get("fatBurn")
-        )
-        cardio_value = _to_float(
-            normalized_value.get("cardioActiveZoneMinutes") or normalized_value.get("cardio")
-        )
-        peak_value = _to_float(
-            normalized_value.get("peakActiveZoneMinutes") or normalized_value.get("peak")
-        )
-
-        total.append(total_value or 0.0)
-        fat.append(fat_value or 0.0)
-        cardio.append(cardio_value or 0.0)
-        peak.append(peak_value or 0.0)
-    return total, fat, cardio, peak
-
-
-def _extract_azm_dataset(*, payload: dict[str, Any]) -> list[Any]:
-    candidate_keys = (
-        "activities-active-zone-minutes-intraday",
-        "activities-active-zone-minutes",
-        "activities-azm-intraday",
-    )
-    for key in candidate_keys:
-        parent = payload.get(key)
-        if isinstance(parent, Mapping):
-            dataset = parent.get("dataset")
-            if isinstance(dataset, list):
-                return dataset
-        if isinstance(parent, list):
-            for entry in parent:
-                if not isinstance(entry, Mapping):
-                    continue
-                minutes = entry.get("minutes")
-                if isinstance(minutes, list):
-                    return minutes
-    return []
-
-
-def _extract_resting_heart_rate_series(*, heart_7d_blob: dict[str, Any] | None) -> list[float]:
-    payload = _blob_payload(heart_7d_blob)
-    entries = payload.get("activities-heart")
-    if not isinstance(entries, list):
-        return []
-    values: list[float] = []
-    for entry in entries:
-        if not isinstance(entry, Mapping):
-            continue
-        value = entry.get("value")
-        if not isinstance(value, Mapping):
-            continue
-        resting = _to_float(value.get("restingHeartRate"))
-        if resting is not None:
-            values.append(resting)
-    return values
-
-
-def _primary_sleep_entry(payload: dict[str, Any]) -> Mapping[str, Any] | None:
-    sleep_entries = payload.get("sleep")
-    if not isinstance(sleep_entries, list) or not sleep_entries:
-        return None
-    for entry in sleep_entries:
-        if isinstance(entry, Mapping) and bool(entry.get("isMainSleep")):
-            return entry
-    first = sleep_entries[0]
-    if isinstance(first, Mapping):
-        return first
-    return None
-
-
 def _parse_datetime(value: Any) -> datetime | None:
     if not isinstance(value, str) or not value.strip():
         return None
@@ -1526,195 +1243,6 @@ def _parse_datetime(value: Any) -> datetime | None:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=UTC)
     return parsed
-
-
-def _extract_sleep_entries(*, blob: dict[str, Any] | None) -> list[Mapping[str, Any]]:
-    payload = _blob_payload(blob)
-    sleep_entries = payload.get("sleep")
-    if not isinstance(sleep_entries, list):
-        return []
-    return [entry for entry in sleep_entries if isinstance(entry, Mapping)]
-
-
-def _extract_hrv_daily_values(*, blob: dict[str, Any] | None) -> list[float]:
-    payload = _blob_payload(blob)
-    entries = payload.get("hrv")
-    if not isinstance(entries, list):
-        return []
-    values: list[float] = []
-    for entry in entries:
-        if not isinstance(entry, Mapping):
-            continue
-        value = entry.get("value")
-        if not isinstance(value, Mapping):
-            continue
-        rmssd = _to_float(value.get("dailyRmssd") or value.get("rmssd"))
-        if rmssd is not None:
-            values.append(rmssd)
-    return values
-
-
-def _extract_hrv_intraday_values(*, blob: dict[str, Any] | None) -> dict[str, list[float]]:
-    payload = _blob_payload(blob)
-    entries = payload.get("hrv")
-    rmssd_values: list[float] = []
-    lf_values: list[float] = []
-    hf_values: list[float] = []
-    lf_hf_ratio_values: list[float] = []
-    coverage_values: list[float] = []
-    if isinstance(entries, list):
-        for entry in entries:
-            if not isinstance(entry, Mapping):
-                continue
-            minutes = entry.get("minutes")
-            if not isinstance(minutes, list):
-                continue
-            for minute in minutes:
-                if not isinstance(minute, Mapping):
-                    continue
-                minute_value = minute.get("value")
-                if not isinstance(minute_value, Mapping):
-                    continue
-                rmssd = _to_float(minute_value.get("rmssd"))
-                if rmssd is not None:
-                    rmssd_values.append(rmssd)
-                lf = _to_float(minute_value.get("lf"))
-                if lf is not None:
-                    lf_values.append(lf)
-                hf = _to_float(minute_value.get("hf"))
-                if hf is not None:
-                    hf_values.append(hf)
-                if lf is not None and hf not in (None, 0):
-                    lf_hf_ratio_values.append(lf / hf)
-                coverage = _to_float(minute_value.get("coverage"))
-                if coverage is not None:
-                    coverage_values.append(coverage)
-    return {
-        "rmssd": rmssd_values,
-        "lf": lf_values,
-        "hf": hf_values,
-        "lf_hf_ratio": lf_hf_ratio_values,
-        "coverage": coverage_values,
-    }
-
-
-def _extract_breathing_metrics(
-    *,
-    blob: dict[str, Any] | None,
-    all_blob: dict[str, Any] | None,
-) -> dict[str, float | None]:
-    output = {
-        "brFullNight": None,
-        "brDeepSleep": None,
-        "brRemSleep": None,
-        "brLightSleep": None,
-    }
-    payload = _blob_payload(blob)
-    value = _extract_first_nested_dict(payload=payload, list_key="br", value_key="value")
-    if not value:
-        value = payload
-    output["brFullNight"] = _to_float(
-        value.get("breathingRate")
-        or value.get("sleepingBreathingRate")
-        or _get_nested(value, "fullSleepSummary", "breathingRate")
-    )
-    output["brDeepSleep"] = _to_float(_get_nested(value, "deepSleepSummary", "breathingRate"))
-    output["brRemSleep"] = _to_float(_get_nested(value, "remSleepSummary", "breathingRate"))
-    output["brLightSleep"] = _to_float(_get_nested(value, "lightSleepSummary", "breathingRate"))
-
-    if (
-        output["brFullNight"] is None
-        or output["brDeepSleep"] is None
-        or output["brRemSleep"] is None
-        or output["brLightSleep"] is None
-    ):
-        all_payload = _blob_payload(all_blob)
-        all_value = _extract_first_nested_dict(
-            payload=all_payload,
-            list_key="br",
-            value_key="value",
-        )
-        if all_value:
-            if output["brFullNight"] is None:
-                output["brFullNight"] = _to_float(
-                    all_value.get("breathingRate") or all_value.get("sleepingBreathingRate")
-                )
-            if output["brDeepSleep"] is None:
-                output["brDeepSleep"] = _to_float(
-                    _get_nested(all_value, "deepSleepSummary", "breathingRate")
-                )
-            if output["brRemSleep"] is None:
-                output["brRemSleep"] = _to_float(
-                    _get_nested(all_value, "remSleepSummary", "breathingRate")
-                )
-            if output["brLightSleep"] is None:
-                output["brLightSleep"] = _to_float(
-                    _get_nested(all_value, "lightSleepSummary", "breathingRate")
-                )
-    return output
-
-
-def _extract_breathing_range_values(*, blob: dict[str, Any] | None) -> list[float]:
-    payload = _blob_payload(blob)
-    entries = payload.get("br")
-    if not isinstance(entries, list):
-        return []
-    values: list[float] = []
-    for entry in entries:
-        if not isinstance(entry, Mapping):
-            continue
-        value = entry.get("value")
-        if not isinstance(value, Mapping):
-            continue
-        br = _to_float(value.get("breathingRate") or value.get("sleepingBreathingRate"))
-        if br is not None:
-            values.append(br)
-    return values
-
-
-def _extract_spo2_range_values(*, blob: dict[str, Any] | None) -> list[float]:
-    payload = _blob_payload(blob)
-    entries = payload.get("spo2")
-    if not isinstance(entries, list):
-        # Fitbit range endpoint often returns a root array; our wrapper stores it under "items".
-        fallback_entries = payload.get("items")
-        if isinstance(fallback_entries, list):
-            entries = fallback_entries
-        else:
-            return []
-    values: list[float] = []
-    for entry in entries:
-        if not isinstance(entry, Mapping):
-            continue
-        value = entry.get("value")
-        if not isinstance(value, Mapping):
-            continue
-        avg = _to_float(value.get("avg") or value.get("average"))
-        if avg is not None:
-            values.append(avg)
-    return values
-
-
-def _extract_temp_range_values(*, blob: dict[str, Any] | None) -> list[float]:
-    payload = _blob_payload(blob)
-    entries = payload.get("tempSkin")
-    if not isinstance(entries, list):
-        return []
-    values: list[float] = []
-    for entry in entries:
-        if not isinstance(entry, Mapping):
-            continue
-        value = entry.get("value")
-        if not isinstance(value, Mapping):
-            continue
-        nightly = _to_float(
-            value.get("nightlyRelative")
-            or value.get("temperatureVariation")
-            or value.get("skinTempDeviation")
-        )
-        if nightly is not None:
-            values.append(nightly)
-    return values
 
 
 def _extract_latest_exercise_metrics(
@@ -1821,74 +1349,6 @@ def _extract_latest_exercise_metrics(
     return output
 
 
-def _extract_nutrition_metrics(
-    *,
-    nutrition_blob: dict[str, Any] | None,
-    water_blob: dict[str, Any] | None,
-) -> dict[str, Any]:
-    output = {
-        "totalCaloriesIntake": None,
-        "snackCaloriesFraction": None,
-        "caloriesFromMeals": None,
-        "caloriesFromSnacks": None,
-        "totalCarbsGrams": None,
-        "totalFatGrams": None,
-        "totalFiberGrams": None,
-        "totalProteinGrams": None,
-        "totalSodiumMg": None,
-        "totalWaterMl": None,
-        "mealsLoggedCount": None,
-        "caloriesPerMealAvg": None,
-    }
-    nutrition_payload = _blob_payload(nutrition_blob)
-    summary = nutrition_payload.get("summary")
-    if isinstance(summary, Mapping):
-        output["totalCaloriesIntake"] = _to_float(summary.get("calories"))
-        output["totalCarbsGrams"] = _to_float(summary.get("carbs"))
-        output["totalFatGrams"] = _to_float(summary.get("fat"))
-        output["totalFiberGrams"] = _to_float(summary.get("fiber"))
-        output["totalProteinGrams"] = _to_float(summary.get("protein"))
-        output["totalSodiumMg"] = _to_float(summary.get("sodium"))
-
-    foods = nutrition_payload.get("foods")
-    if isinstance(foods, list):
-        meal_count = 0
-        meal_calories = 0.0
-        snack_calories = 0.0
-        for food in foods:
-            if not isinstance(food, Mapping):
-                continue
-            calories = _to_float(food.get("calories"))
-            if calories is None:
-                continue
-            meal_type = food.get("mealTypeId")
-            if meal_type in (4, "4"):
-                snack_calories += calories
-            else:
-                meal_calories += calories
-            meal_count += 1
-        if meal_count > 0:
-            output["mealsLoggedCount"] = meal_count
-            output["caloriesPerMealAvg"] = (meal_calories + snack_calories) / meal_count
-            output["caloriesFromMeals"] = meal_calories
-            output["caloriesFromSnacks"] = snack_calories
-            total = meal_calories + snack_calories
-            if total > 0:
-                output["snackCaloriesFraction"] = snack_calories / total
-
-    water_payload = _blob_payload(water_blob)
-    water_summary = water_payload.get("summary")
-    if isinstance(water_summary, Mapping):
-        output["totalWaterMl"] = _to_float(water_summary.get("water"))
-    return output
-
-
-def _acute_arousal_index(*, hr_z_now: float | None, sleep_debt_hours: float | None) -> float | None:
-    if hr_z_now is None and sleep_debt_hours is None:
-        return None
-    return (hr_z_now or 0.0) + ((sleep_debt_hours or 0.0) / 2.0)
-
-
 def _to_bool(value: Any) -> bool | None:
     if isinstance(value, bool):
         return value
@@ -1905,21 +1365,6 @@ def _c_to_f(value_c: float | None) -> float | None:
     if value_c is None:
         return None
     return (value_c * 9.0 / 5.0) + 32.0
-
-
-def _extract_steps_7d_values(*, blob: dict[str, Any] | None) -> list[float]:
-    payload = _blob_payload(blob)
-    entries = payload.get("activities-steps")
-    if not isinstance(entries, list):
-        return []
-    values: list[float] = []
-    for entry in entries:
-        if not isinstance(entry, Mapping):
-            continue
-        value = _to_float(entry.get("value"))
-        if value is not None:
-            values.append(value)
-    return values
 
 
 def _add_note(notes: list[str], note: str) -> None:

@@ -296,6 +296,11 @@ class RequestFulfillmentService:
                     request_id,
                     ", ".join(missing_or_partial),
                 )
+            logger.debug(
+                "Feature payload notes for request %s: %s",
+                request_id,
+                ", ".join(note for note in notes if isinstance(note, str)) or "none",
+            )
         return payload
 
     def _call_fitbit_fetch(

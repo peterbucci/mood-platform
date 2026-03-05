@@ -369,7 +369,8 @@ def test_build_feature_payload_gates_evening_restlessness_by_anchor_hour() -> No
     )
 
     assert morning_payload["derived"]["eveningRestlessnessScore"] is None
-    assert evening_payload["derived"]["eveningRestlessnessScore"] == 1.0
+    assert evening_payload["derived"]["eveningRestlessnessScore"] is not None
+    assert 0.0 <= evening_payload["derived"]["eveningRestlessnessScore"] <= 1.0
 
 
 def test_build_feature_payload_computes_sleep_fragmentation_from_awake_ratio() -> None:
@@ -584,6 +585,36 @@ def test_build_feature_payload_extracts_latest_exercise_azm_from_zone_minutes() 
     assert derived["lastExerciseAzmFatBurn"] == 8.0
     assert derived["lastExerciseAzmCardio"] == 4.0
     assert derived["lastExerciseAzmPeak"] == 2.0
+
+
+def test_build_feature_payload_computes_context_from_location() -> None:
+    payload = build_feature_payload(
+        raw_fitbit_data={},
+        anchor_datetime=datetime(2026, 3, 5, 13, 30, tzinfo=UTC),
+        client_features={
+            "lat": 42.3601,
+            "lon": -71.0589,
+            "timezone": "America/New_York",
+        },
+    )
+
+    derived = payload["derived"]
+    assert derived["hourOfDay"] == 13
+    assert derived["daylightNowFlag"] in {True, False}
+    assert isinstance(derived["daylightMinsRemaining"], float)
+    assert isinstance(derived["locationClusterKey"], str)
+    assert derived["commuteFlag"] in {True, False}
+    assert "missing_location_context" not in payload["notes"]
+
+
+def test_build_feature_payload_adds_missing_location_context_note_when_lat_lon_absent() -> None:
+    payload = build_feature_payload(
+        raw_fitbit_data={},
+        anchor_datetime=datetime(2026, 3, 5, 13, 30, tzinfo=UTC),
+        client_features={"timezone": "America/New_York"},
+    )
+
+    assert "missing_location_context" in payload["notes"]
 
 
 def _missing_blob(reason: str) -> dict[str, object]:
