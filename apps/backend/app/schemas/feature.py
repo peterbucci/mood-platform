@@ -7,3 +7,7 @@ class FeatureListResponse(BaseModel):
     items: list[FeatureResponse]
     limit: int
     offset: int
+
+
+class FeatureDeleteResponse(BaseModel):
+    id: str

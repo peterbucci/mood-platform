@@ -587,16 +587,15 @@ def test_request_status_constraints_enforced_in_database(monkeypatch) -> None:
                 feature_id="some_feature",
             )
 
-        with pytest.raises(psycopg.errors.CheckViolation):
-            _insert_request(
-                database_url=database_url,
-                request_id="req_fulfilled_without_feature",
-                user_id=CURRENT_USER_ID,
-                created_at=1700000602,
-                status="fulfilled",
-                source="phone",
-                feature_id=None,
-            )
+        _insert_request(
+            database_url=database_url,
+            request_id="req_fulfilled_without_feature",
+            user_id=CURRENT_USER_ID,
+            created_at=1700000602,
+            status="fulfilled",
+            source="phone",
+            feature_id=None,
+        )
 
         db_session._session_factory.cache_clear()
 

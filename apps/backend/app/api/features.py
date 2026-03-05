@@ -3,9 +3,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.dependencies import get_feature_service
-from app.schemas.feature import FeatureListResponse
+from app.schemas.feature import FeatureDeleteResponse, FeatureListResponse
 from app.schemas.responses import FeatureResponse
-from app.services.feature_service import FeatureDataParseError, FeatureNotFoundError, FeatureService
+from app.services.feature_service import (
+    FeatureDataParseError,
+    FeatureDeleteError,
+    FeatureNotFoundError,
+    FeatureService,
+)
 
 router = APIRouter(prefix="/features", tags=["features"])
 
@@ -61,3 +66,24 @@ def get_feature_by_id(
             detail=str(exc),
         ) from exc
     return FeatureResponse(**feature)
+
+
+@router.delete(
+    "/{feature_id}",
+    response_model=FeatureDeleteResponse,
+    summary="Delete a feature and clean up dependent objects.",
+)
+def delete_feature_by_id(
+    feature_id: str,
+    feature_service: Annotated[FeatureService, Depends(get_feature_service)],
+) -> FeatureDeleteResponse:
+    try:
+        deleted = feature_service.delete_feature(feature_id=feature_id)
+    except FeatureNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except FeatureDeleteError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+    return FeatureDeleteResponse(**deleted)
