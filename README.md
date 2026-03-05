@@ -90,6 +90,8 @@ Fitbit OAuth environment variables are also available in `.env.example`:
 - `FITBIT_CLIENT_ID`
 - `FITBIT_CLIENT_SECRET`
 - `FITBIT_REDIRECT_URI`
+- `FITBIT_WEBHOOK_SECRET`
+- `FITBIT_WEBHOOK_COALESCE_SECONDS`
 
 Token lifecycle behavior:
 

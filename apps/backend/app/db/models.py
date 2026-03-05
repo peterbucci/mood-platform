@@ -133,6 +133,44 @@ class FitbitToken(Base):
     )
 
 
+class WebhookJob(Base):
+    __tablename__ = "webhook_jobs"
+    __table_args__ = (
+        sa.Index("ix_webhook_jobs_status_created_at", "status", "created_at"),
+        sa.Index(
+            "ix_webhook_jobs_user_status_created_at_desc",
+            "user_id",
+            "status",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    fitbit_user_id: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    job_type: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    payload_json: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        sa.Text,
+        nullable=False,
+        server_default=sa.text("'pending'"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.text("now()"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.text("now()"),
+    )
+
+
 class FeatureSetMixin:
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(

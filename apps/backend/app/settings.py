@@ -8,6 +8,7 @@ DEFAULT_FEATURE_EXTRACTOR_VERSION = "v1"
 DEFAULT_FITBIT_AUTH_BASE_URL = "https://www.fitbit.com/oauth2/authorize"
 DEFAULT_FITBIT_TOKEN_URL = "https://api.fitbit.com/oauth2/token"
 DEFAULT_FITBIT_OAUTH_SCOPE = "sleep heartrate activity profile"
+DEFAULT_FITBIT_WEBHOOK_COALESCE_SECONDS = 30
 
 
 @dataclass(frozen=True)
@@ -19,6 +20,8 @@ class Settings:
     FITBIT_AUTH_BASE_URL: str = DEFAULT_FITBIT_AUTH_BASE_URL
     FITBIT_TOKEN_URL: str = DEFAULT_FITBIT_TOKEN_URL
     FITBIT_OAUTH_SCOPE: str = DEFAULT_FITBIT_OAUTH_SCOPE
+    FITBIT_WEBHOOK_SECRET: str = ""
+    FITBIT_WEBHOOK_COALESCE_SECONDS: int = DEFAULT_FITBIT_WEBHOOK_COALESCE_SECONDS
 
     def fitbit_scope_query_value(self) -> str:
         return " ".join(self.FITBIT_OAUTH_SCOPE.split())
@@ -43,6 +46,15 @@ def get_settings() -> Settings:
     if not configured_version:
         configured_version = DEFAULT_FEATURE_EXTRACTOR_VERSION
 
+    configured_fitbit_webhook_coalesce_seconds = os.getenv(
+        "FITBIT_WEBHOOK_COALESCE_SECONDS",
+        str(DEFAULT_FITBIT_WEBHOOK_COALESCE_SECONDS),
+    ).strip()
+    try:
+        fitbit_webhook_coalesce_seconds = int(configured_fitbit_webhook_coalesce_seconds)
+    except ValueError:
+        fitbit_webhook_coalesce_seconds = DEFAULT_FITBIT_WEBHOOK_COALESCE_SECONDS
+
     return Settings(
         FEATURE_EXTRACTOR_VERSION=configured_version,
         FITBIT_CLIENT_ID=os.getenv("FITBIT_CLIENT_ID", "").strip(),
@@ -60,4 +72,6 @@ def get_settings() -> Settings:
             "FITBIT_OAUTH_SCOPE",
             DEFAULT_FITBIT_OAUTH_SCOPE,
         ).strip(),
+        FITBIT_WEBHOOK_SECRET=os.getenv("FITBIT_WEBHOOK_SECRET", "").strip(),
+        FITBIT_WEBHOOK_COALESCE_SECONDS=max(1, fitbit_webhook_coalesce_seconds),
     )
