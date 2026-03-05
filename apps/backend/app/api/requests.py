@@ -1,11 +1,15 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.dependencies import get_feature_request_service
-from app.schemas.request_status import RequestListResponse
+from app.schemas.request_status import (
+    PendingRequestCountResponse,
+    RequestListResponse,
+    RequestStatusResponse,
+)
 from app.schemas.responses import RequestResponse
-from app.services.feature_request_service import FeatureRequestService
+from app.services.feature_request_service import FeatureRequestNotFoundError, FeatureRequestService
 
 router = APIRouter(prefix="/requests", tags=["requests"])
 
@@ -22,3 +26,24 @@ def list_requests(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/pending/count", response_model=PendingRequestCountResponse)
+def get_pending_request_count(
+    feature_request_service: Annotated[FeatureRequestService, Depends(get_feature_request_service)],
+    user_id: str | None = Query(default=None, alias="userId"),
+) -> PendingRequestCountResponse:
+    pending_count = feature_request_service.get_pending_request_count(user_id=user_id)
+    return PendingRequestCountResponse(pendingCount=pending_count)
+
+
+@router.get("/{request_id}", response_model=RequestStatusResponse)
+def get_request_by_id(
+    request_id: str,
+    feature_request_service: Annotated[FeatureRequestService, Depends(get_feature_request_service)],
+) -> RequestStatusResponse:
+    try:
+        item = feature_request_service.get_request_by_id(request_id=request_id)
+    except FeatureRequestNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return RequestStatusResponse(**item)

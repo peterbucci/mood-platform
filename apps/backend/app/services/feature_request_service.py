@@ -13,6 +13,10 @@ class FeatureRequestPersistenceError(Exception):
     pass
 
 
+class FeatureRequestNotFoundError(Exception):
+    pass
+
+
 class FeatureRequestService:
     def __init__(self, repository: FeatureRequestRepository, owner_user_id: uuid.UUID) -> None:
         self._repository = repository
@@ -51,3 +55,27 @@ class FeatureRequestService:
                 }
             items.append(payload)
         return items
+
+    def get_request_by_id(self, *, request_id: str) -> dict[str, Any]:
+        request = self._repository.get_request_by_id_for_user(
+            user_id=str(self._owner_user_id),
+            request_id=request_id,
+        )
+        if request is None:
+            raise FeatureRequestNotFoundError(
+                f"Request {request_id} was not found for current user."
+            )
+        return {
+            "id": request.id,
+            "status": request.status,
+            "featureId": request.feature_id,
+            "createdAt": request.created_at,
+        }
+
+    def get_pending_request_count(self, *, user_id: str | None = None) -> int:
+        target_user_id = str(self._owner_user_id)
+        if isinstance(user_id, str):
+            stripped_user_id = user_id.strip()
+            if stripped_user_id:
+                target_user_id = stripped_user_id
+        return self._repository.count_pending_requests(user_id=target_user_id)
