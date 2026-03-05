@@ -8,7 +8,7 @@ DEFAULT_FEATURE_EXTRACTOR_VERSION = "v1"
 DEFAULT_FITBIT_AUTH_BASE_URL = "https://www.fitbit.com/oauth2/authorize"
 DEFAULT_FITBIT_TOKEN_URL = "https://api.fitbit.com/oauth2/token"
 DEFAULT_FITBIT_OAUTH_SCOPE = "sleep heartrate activity profile"
-DEFAULT_FITBIT_WEBHOOK_COALESCE_SECONDS = 30
+DEFAULT_FITBIT_WEBHOOK_COALESCE_SECONDS = 10
 
 
 @dataclass(frozen=True)

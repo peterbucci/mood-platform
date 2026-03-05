@@ -97,8 +97,8 @@ async def ingest_fitbit_webhook(
             detail="Webhook payload must be a JSON array",
         )
 
-    logger.info(
-        "Fitbit webhook accepted.",
+    logger.debug(
+        "Fitbit webhook received.",
         extra={"request_id": request_id, "verified": True, "event_count": len(payload)},
     )
     background_tasks.add_task(

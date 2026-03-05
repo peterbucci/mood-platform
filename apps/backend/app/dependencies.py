@@ -1,8 +1,11 @@
+import logging
+from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
+from app.db import session as db_session
 from app.db.session import get_db_session
 from app.repositories.feature_repository import FeatureRepository
 from app.repositories.feature_request_repository import FeatureRequestRepository
@@ -20,7 +23,12 @@ from app.services.fitbit_token_service import FitbitTokenService
 from app.services.fitbit_webhook_ingestion_service import FitbitWebhookIngestionService
 from app.services.health_service import HealthService
 from app.services.mood_entry_service import MoodEntryService, get_owner_user_id
+from app.services.request_fulfillment_service import RequestFulfillmentService
+from app.services.webhook_coalescer import WebhookCoalescer
 from app.settings import get_settings
+from app.worker import StaticFitbitClient
+
+logger = logging.getLogger(__name__)
 
 
 def get_postgres_repository() -> PostgresRepository:
@@ -83,6 +91,47 @@ def get_webhook_job_repository(
     return WebhookJobRepository(session=db_session)
 
 
+def _get_webhook_coalesce_seconds() -> int:
+    return get_settings().FITBIT_WEBHOOK_COALESCE_SECONDS
+
+
+def _has_pending_requests_for_user(user_id: str) -> bool:
+    session_factory = db_session._session_factory()
+    with session_factory() as session:
+        repository = FeatureRequestRepository(session=session)
+        return repository.has_pending_requests_for_user(user_id=user_id)
+
+
+def _trigger_fulfillment_for_user(user_id: str) -> None:
+    session_factory = db_session._session_factory()
+    with session_factory() as session:
+        repository = FeatureRequestRepository(session=session)
+        service = RequestFulfillmentService(
+            repository=repository,
+            fitbit_client=StaticFitbitClient(),
+        )
+        stats = service.process_pending_requests_for_user(user_id=user_id)
+        logger.debug(
+            "Webhook coalescer fulfillment run completed.",
+            extra={
+                "user_id": user_id,
+                "processed": stats.processed,
+                "fulfilled": stats.fulfilled,
+                "skipped": stats.skipped,
+                "failed": stats.failed,
+            },
+        )
+
+
+@lru_cache
+def get_webhook_coalescer() -> WebhookCoalescer:
+    return WebhookCoalescer(
+        coalesce_seconds_provider=_get_webhook_coalesce_seconds,
+        has_pending_requests=_has_pending_requests_for_user,
+        trigger_fulfillment=_trigger_fulfillment_for_user,
+    )
+
+
 def get_feature_request_service(
     feature_request_repository: Annotated[
         FeatureRequestRepository, Depends(get_feature_request_repository)
@@ -134,10 +183,9 @@ def get_fitbit_oauth_service(
 
 def get_fitbit_webhook_ingestion_service(
     fitbit_token_repository: Annotated[FitbitTokenRepository, Depends(get_fitbit_token_repository)],
-    webhook_job_repository: Annotated[WebhookJobRepository, Depends(get_webhook_job_repository)],
+    webhook_coalescer: Annotated[WebhookCoalescer, Depends(get_webhook_coalescer)],
 ) -> FitbitWebhookIngestionService:
     return FitbitWebhookIngestionService(
         fitbit_token_repository=fitbit_token_repository,
-        webhook_job_repository=webhook_job_repository,
-        settings=get_settings(),
+        webhook_coalescer=webhook_coalescer,
     )

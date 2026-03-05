@@ -24,7 +24,7 @@ WEBHOOK_SECRET = "test-fitbit-webhook-secret"
 WEBHOOK_URL = "/fitbit/webhook"
 
 
-def test_webhook_valid_signature_returns_204_and_enqueues_job(monkeypatch) -> None:
+def test_webhook_valid_signature_returns_204(monkeypatch) -> None:
     with _temporary_database() as database_url:
         _run_alembic_upgrade(database_url=database_url)
         _seed_fitbit_token(
@@ -48,11 +48,10 @@ def test_webhook_valid_signature_returns_204_and_enqueues_job(monkeypatch) -> No
             )
 
         assert response.status_code == 204
-        assert _count_webhook_jobs(database_url=database_url) == 1
         db_session._session_factory.cache_clear()
 
 
-def test_webhook_invalid_signature_returns_403_and_does_not_enqueue(monkeypatch) -> None:
+def test_webhook_invalid_signature_returns_403(monkeypatch) -> None:
     with _temporary_database() as database_url:
         _run_alembic_upgrade(database_url=database_url)
         _seed_fitbit_token(
@@ -77,11 +76,10 @@ def test_webhook_invalid_signature_returns_403_and_does_not_enqueue(monkeypatch)
 
         assert response.status_code == 403
         assert response.json() == {"detail": "Invalid webhook signature"}
-        assert _count_webhook_jobs(database_url=database_url) == 0
         db_session._session_factory.cache_clear()
 
 
-def test_webhook_missing_signature_returns_401_and_does_not_enqueue(monkeypatch) -> None:
+def test_webhook_missing_signature_returns_401(monkeypatch) -> None:
     with _temporary_database() as database_url:
         _run_alembic_upgrade(database_url=database_url)
         _seed_fitbit_token(
@@ -102,7 +100,6 @@ def test_webhook_missing_signature_returns_401_and_does_not_enqueue(monkeypatch)
 
         assert response.status_code == 401
         assert response.json() == {"detail": "Missing webhook signature"}
-        assert _count_webhook_jobs(database_url=database_url) == 0
         db_session._session_factory.cache_clear()
 
 
@@ -135,11 +132,10 @@ def test_webhook_signature_uses_raw_body_bytes(monkeypatch) -> None:
             )
 
         assert response.status_code == 403
-        assert _count_webhook_jobs(database_url=database_url) == 0
         db_session._session_factory.cache_clear()
 
 
-def test_webhook_coalesces_duplicate_jobs_for_same_user(monkeypatch) -> None:
+def test_webhook_duplicate_events_for_same_user_return_204(monkeypatch) -> None:
     with _temporary_database() as database_url:
         _run_alembic_upgrade(database_url=database_url)
         _seed_fitbit_token(
@@ -172,7 +168,6 @@ def test_webhook_coalesces_duplicate_jobs_for_same_user(monkeypatch) -> None:
 
         assert first_response.status_code == 204
         assert second_response.status_code == 204
-        assert _count_webhook_jobs(database_url=database_url) == 1
         db_session._session_factory.cache_clear()
 
 
@@ -235,7 +230,7 @@ def _run_alembic_upgrade(*, database_url: str) -> None:
 def _configure_runtime_env(*, monkeypatch, database_url: str) -> None:
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("FITBIT_WEBHOOK_SECRET", WEBHOOK_SECRET)
-    monkeypatch.setenv("FITBIT_WEBHOOK_COALESCE_SECONDS", "30")
+    monkeypatch.setenv("FITBIT_WEBHOOK_COALESCE_SECONDS", "10")
     db_session._session_factory.cache_clear()
 
 
@@ -259,13 +254,6 @@ def _seed_fitbit_token(*, database_url: str, user_id: str, fitbit_user_id: str) 
                 ),
             )
         connection.commit()
-
-
-def _count_webhook_jobs(*, database_url: str) -> int:
-    with psycopg.connect(database_url) as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM webhook_jobs")
-            return int(cursor.fetchone()[0])
 
 
 def _build_signature(*, secret: str, raw_body: bytes) -> str:
