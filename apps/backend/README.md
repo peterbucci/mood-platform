@@ -170,6 +170,117 @@ Required OAuth refresh env vars:
 - `FITBIT_CLIENT_ID`
 - `FITBIT_CLIENT_SECRET`
 
+## Fitbit Pull Coverage (US-021)
+
+Fulfillment now fetches Fitbit signals per request anchor date (derived from request `created_at`) and
+builds one merged feature payload with graceful missing/partial handling.
+
+### Fitbit Fetch Model (Python)
+
+The Python worker now mirrors the Node orchestration model:
+
+- Requests are grouped by `(user, local_day, night_anchor_day, source_timezone)`.
+- Day-aligned signals use the request local calendar day.
+- Night-aligned signals use a configurable night anchor window.
+- `latest_exercise` is fetched per request anchor timestamp (not per date batch).
+
+Night anchor knobs:
+
+- `NIGHT_ANCHOR_START_HOUR` (default `18`)
+- `NIGHT_ANCHOR_END_HOUR` (default `12`)
+- `FITBIT_DEFAULT_TIMEZONE` (default `UTC`) used when client/request timezone is missing.
+
+Rate-limit/backoff policy:
+
+- Per-user minimum request interval: `FITBIT_MIN_FETCH_INTERVAL_SECONDS` (default `0.2`).
+- 429 retry count: `FITBIT_MAX_RETRIES` (default `3`).
+- 429 backoff base: `FITBIT_BACKOFF_BASE_SECONDS` (default `1.0`).
+- `Retry-After` header is honored when present.
+- Failed requests persist retry state in `requests` (`attempts`, `nextAttemptAt`, `lastErrorCode`, `lastErrorSignal`) so the worker does not immediately retry the same request in the next loop.
+
+403 semantics:
+
+- 403 with missing-scope semantics is treated as non-fatal signal-missing (`forbidden_scope`), and token row is marked `needs_reauth=true`.
+- `needs_reauth` short-circuits Fitbit pulls to avoid retry thrash until OAuth relink.
+- 401 remains auth-fatal for that fetch attempt.
+
+Fitbit endpoints called:
+
+- OAuth authorize: `GET https://www.fitbit.com/oauth2/authorize`
+- OAuth token: `POST https://api.fitbit.com/oauth2/token`
+- Webhook subscription registration: `POST /1/user/-/activities/apiSubscriptions/1.json`
+- Activity summary: `GET /1/user/-/activities/date/{date}.json`
+- Intraday steps: `GET /1/user/-/activities/steps/date/{date}/1d/1min.json`
+- Intraday calories out: `GET /1/user/-/activities/calories/date/{date}/1d/1min.json`
+- Intraday active-zone-minutes: `GET /1/user/-/activities/active-zone-minutes/date/{date}/1d/1min.json`
+- Heart daily intraday: `GET /1/user/-/activities/heart/date/{date}/1d/1min.json`
+- Heart 7-day: `GET /1/user/-/activities/heart/date/{date}/7d.json`
+- Steps 7-day: `GET /1/user/-/activities/steps/date/{date}/7d.json`
+- Latest exercise: `GET /1/user/-/activities/list.json?beforeDate={date}&sort=desc&offset=0&limit=1`
+- Sleep daily: `GET /1.2/user/-/sleep/date/{date}.json`
+- Sleep range: `GET /1.2/user/-/sleep/date/{start}/{end}.json`
+- HRV daily: `GET /1/user/-/hrv/date/{date}.json`
+- HRV range: `GET /1/user/-/hrv/date/{start}/{end}.json`
+- HRV intraday-all: `GET /1/user/-/hrv/date/{date}/all.json`
+- Breathing daily: `GET /1/user/-/br/date/{date}.json`
+- Breathing range: `GET /1/user/-/br/date/{start}/{end}.json`
+- Breathing all: `GET /1/user/-/br/date/{date}/all.json`
+- SpO2 daily: `GET /1/user/-/spo2/date/{date}.json`
+- SpO2 range: `GET /1/user/-/spo2/date/{start}/{end}.json`
+- Skin temp daily: `GET /1/user/-/temp/skin/date/{date}.json`
+- Skin temp range: `GET /1/user/-/temp/skin/date/{start}/{end}.json`
+- Nutrition summary: `GET /1/user/-/foods/log/date/{date}.json`
+- Water logs: `GET /1/user/-/foods/log/water/date/{date}.json`
+
+Non-Fitbit context endpoints called (when `clientFeatures.lat/lon` are provided):
+
+- Weather: `GET https://api.open-meteo.com/v1/forecast`
+- Air quality: `GET https://air-quality-api.open-meteo.com/v1/air-quality`
+
+Fitbit passthrough endpoint:
+
+- `GET /fitbit/proxy?path=/1/...` or `/1.2/...` forwards to `https://api.fitbit.com{path}`
+- `/oauth2/*` is blocked by allowlist/denylist rules
+
+Recommended OAuth scopes for parity:
+
+- `activity`
+- `heartrate`
+- `sleep`
+- `nutrition`
+- `oxygen_saturation`
+- `respiratory_rate`
+- `temperature`
+- `profile`
+
+Additional env vars used by this flow:
+
+- `FITBIT_SUBSCRIBER_ID` for subscription registration header `X-Fitbit-Subscriber-Id`
+- `WEATHER_CACHE_TTL_SECONDS` for weather/air-quality cache TTL (Redis-backed if `REDIS_URL` exists, else in-memory)
+
+Feature payload notes:
+
+- `missing_hrv`, `partial_hrv`
+- `missing_breathing_rate`, `partial_breathing_rate`
+- `missing_spo2`, `partial_spo2`
+- `missing_temp`, `partial_temp`
+- `missing_nutrition`, `partial_nutrition`
+- `missing_water`, `partial_water`
+- `missing_intraday_steps`
+- `missing_intraday_calories`
+- `missing_intraday_azm`
+- `missing_intraday_heart`
+- `missing_weather`
+- `missing_air_quality`
+
+Behavior rules:
+
+- Missing/partial signal data never fails full fulfillment.
+- Derived fields for missing signals are emitted as `null`.
+- `401` is treated as auth failure for the pull and retries via token refresh.
+- `403`/`404`/`5xx`/malformed JSON become per-signal missing markers.
+- `429` is retried with backoff and can schedule request-level retry using `nextAttemptAt` when retries are exhausted.
+
 ## Fulfillment Worker
 
 The worker continuously polls pending feature requests and attempts fulfillment.
@@ -249,3 +360,25 @@ The `worker` service has a Docker healthcheck that probes:
   - `python -m alembic -c apps/backend/alembic.ini upgrade head`
 - If multiple workers run, per-user TTL locks in `worker_locks` prevent concurrent processing.
 - If healthcheck fails, verify worker logs and `WORKER_HEALTH_PORT`.
+
+### Manual Flow (OAuth -> Request -> Webhook -> Fulfillment)
+
+1. Connect Fitbit OAuth (`GET /fitbit/oauth/start` -> callback).
+2. Create pending request (`POST /features/request`).
+3. Send Fitbit webhook payload to `POST /fitbit/webhook` (valid signature).
+4. Ensure worker is running (`python -m app.worker` or docker compose worker).
+5. Read `GET /features/latest` and verify data now includes:
+   - `activity`, `hrv`, `breathing_rate`, `spo2`, `temp`, `nutrition`, `water`, `notes`.
+
+### Local Verification (403/429 behavior)
+
+1. Start worker:
+   - `PYTHONPATH=apps/backend python -m app.worker`
+2. Trigger a request:
+   - `curl -X POST http://localhost:8000/features/request`
+3. Simulate mocked 429/403 in tests:
+   - `python -m pytest apps/backend/tests/test_fitbit_api_client.py apps/backend/tests/test_fitbit_data_client.py apps/backend/tests/test_request_backoff_scheduling.py -q`
+4. Confirm retry scheduling:
+   - `SELECT id, attempts, "nextAttemptAt", "lastErrorCode", "lastErrorSignal" FROM requests WHERE status='pending';`
+5. Confirm forbidden breathing still fulfills with note:
+   - `python -m pytest apps/backend/tests/test_request_fulfillment_static_payload.py -q`
