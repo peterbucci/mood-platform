@@ -36,7 +36,7 @@ class FeatureRequest(Base):
         ),
         sa.CheckConstraint(
             "(status != 'pending' OR \"featureId\" IS NULL) "
-            "AND (status != 'fulfilled' OR \"featureId\" IS NOT NULL)",
+            "AND (status != 'canceled' OR \"featureId\" IS NULL)",
             name="ck_requests_feature_id_consistency",
         ),
         sa.Index("ix_requests_status", "status"),
