@@ -3,12 +3,30 @@ param(
     [switch]$NoCache,
     [switch]$SkipBuild,
     [switch]$StopAfter,
-    [string]$DatabaseUrl = "postgresql://mood:mood@localhost:5432/mood",
+    [switch]$SkipLint,
+    [switch]$SkipFormatCheck,
+    [string]$DatabaseUrl = "postgresql://mood:mood@postgres:5432/mood",
+    [string[]]$LintFiles = @(
+        "apps/backend/app/services/fitbit_api_client.py",
+        "apps/backend/app/services/fitbit_data_client.py",
+        "apps/backend/app/services/fitbit_feature_builder.py",
+        "apps/backend/app/services/request_fulfillment_service.py",
+        "apps/backend/app/worker.py",
+        "apps/backend/tests/test_fitbit_data_client.py",
+        "apps/backend/tests/test_fitbit_feature_builder.py",
+        "apps/backend/tests/test_request_fulfillment_service.py",
+        "apps/backend/tests/test_worker_iteration_e2e.py"
+    ),
     [string[]]$Tests = @(
-        "apps/backend/tests/test_webhook_coalescer.py",
+        "apps/backend/tests/test_fitbit_api_client.py",
+        "apps/backend/tests/test_fitbit_data_client.py",
+        "apps/backend/tests/test_fitbit_feature_builder.py",
         "apps/backend/tests/test_fitbit_webhook_ingestion_service.py",
-        "apps/backend/tests/test_fitbit_webhook_endpoint.py",
-        "apps/backend/tests/test_fitbit_webhook_ingestion.py"
+        "apps/backend/tests/test_webhook_coalescer.py",
+        "apps/backend/tests/test_worker_runtime.py",
+        "apps/backend/tests/test_worker_health_server.py",
+        "apps/backend/tests/test_request_fulfillment_service.py",
+        "apps/backend/tests/test_worker_iteration_e2e.py"
     )
 )
 
@@ -28,18 +46,17 @@ function Invoke-Step {
     & $Action
 }
 
-function Get-PythonExecutable {
-    $venvPython = Join-Path (Get-Location) ".venv\Scripts\python.exe"
-    if (Test-Path $venvPython) {
-        return $venvPython
-    }
+function Convert-ToContainerPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
 
-    $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
-    if ($null -ne $pythonCmd) {
-        return "python"
+    $normalized = $Path.Replace("\", "/")
+    if ($normalized.StartsWith("apps/backend/")) {
+        return $normalized.Substring("apps/backend/".Length)
     }
-
-    throw "Python executable not found. Create .venv or ensure python is on PATH."
+    return $normalized
 }
 
 function Wait-ForPostgres {
@@ -59,6 +76,7 @@ function Wait-ForPostgres {
         catch {
             # Service may still be starting.
         }
+
         Start-Sleep -Seconds $DelaySeconds
     }
 
@@ -67,26 +85,41 @@ function Wait-ForPostgres {
 
 function Wait-ForApi {
     param(
-        [string]$Url = "http://localhost:8000/health/live",
-        [int]$MaxAttempts = 30,
+        [string[]]$Urls = @(
+            "http://localhost:8000/health/live",
+            "http://localhost:8000/health/ready"
+        ),
+        [int]$MaxAttempts = 60,
         [int]$DelaySeconds = 2
     )
 
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
-        try {
-            $response = Invoke-WebRequest -Uri $Url -Method Get -TimeoutSec 3
-            if ($response.StatusCode -eq 200) {
-                Write-Host "API is healthy."
-                return
+        foreach ($url in $Urls) {
+            try {
+                $response = Invoke-WebRequest -UseBasicParsing -Uri $url -Method Get -TimeoutSec 3
+                if ($response.StatusCode -eq 200) {
+                    Write-Host "API is healthy at $url."
+                    return
+                }
+            }
+            catch {
+                # Service may still be starting.
             }
         }
-        catch {
-            # Service may still be starting.
-        }
+
         Start-Sleep -Seconds $DelaySeconds
     }
 
-    throw "Timed out waiting for API health endpoint at $Url."
+    throw "Timed out waiting for API health endpoints: $($Urls -join ', ')."
+}
+
+function Join-QuotedArgs {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Values
+    )
+
+    return ($Values | ForEach-Object { "'$_'" }) -join " "
 }
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
@@ -94,51 +127,75 @@ Push-Location $repoRoot
 try {
     if (-not $SkipBuild) {
         Invoke-Step -Name "Building Docker images (api, worker)" -Action {
+            $buildArgs = @("build")
             if ($NoCache) {
-                docker compose build --no-cache api worker
+                $buildArgs += "--no-cache"
             }
-            else {
-                docker compose build api worker
-            }
+            $buildArgs += @("api", "worker")
 
+            & docker compose @buildArgs
             if ($LASTEXITCODE -ne 0) {
                 throw "docker compose build failed."
             }
         }
     }
 
-    Invoke-Step -Name "Starting Docker services" -Action {
-        docker compose up -d postgres redis api worker
+    Invoke-Step -Name "Starting Docker services (postgres, redis)" -Action {
+        docker compose up -d postgres redis
         if ($LASTEXITCODE -ne 0) {
             throw "docker compose up failed."
         }
     }
 
-    Invoke-Step -Name "Waiting for service readiness" -Action {
+    Invoke-Step -Name "Waiting for Postgres readiness" -Action {
         Wait-ForPostgres
+    }
+
+    Invoke-Step -Name "Running database migrations" -Action {
+        docker compose run --rm api python -m alembic -c alembic.ini upgrade head
+        if ($LASTEXITCODE -ne 0) {
+            throw "alembic upgrade head failed."
+        }
+    }
+
+    Invoke-Step -Name "Starting app services (api, worker)" -Action {
+        docker compose up -d api worker
+        if ($LASTEXITCODE -ne 0) {
+            throw "docker compose up failed."
+        }
+    }
+
+    Invoke-Step -Name "Waiting for API readiness" -Action {
         Wait-ForApi
     }
 
-    Invoke-Step -Name "Running backend webhook/coalescer tests" -Action {
-        $pythonExe = Get-PythonExecutable
-        Write-Host "Using python executable: $pythonExe"
-        Write-Host "DATABASE_URL for tests: $DatabaseUrl"
+    Invoke-Step -Name "Running lint/format/tests inside Docker (api image)" -Action {
+        $containerLintFiles = @($LintFiles | ForEach-Object { Convert-ToContainerPath -Path $_ })
+        $containerTests = @($Tests | ForEach-Object { Convert-ToContainerPath -Path $_ })
 
-        $previousDatabaseUrl = $env:DATABASE_URL
-        try {
-            $env:DATABASE_URL = $DatabaseUrl
-            & $pythonExe -m pytest @Tests -q
-            if ($LASTEXITCODE -ne 0) {
-                throw "pytest failed."
-            }
+        $lintArgs = Join-QuotedArgs -Values $containerLintFiles
+        $testArgs = Join-QuotedArgs -Values $containerTests
+
+        $commands = New-Object System.Collections.Generic.List[string]
+        $commands.Add("python -m pip install --quiet pytest ruff")
+
+        if (-not $SkipLint) {
+            $commands.Add("ruff check $lintArgs")
         }
-        finally {
-            if ($null -eq $previousDatabaseUrl) {
-                Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
-            }
-            else {
-                $env:DATABASE_URL = $previousDatabaseUrl
-            }
+
+        if (-not $SkipFormatCheck) {
+            # Normalize line endings/format in ephemeral container copy before enforcing check.
+            $commands.Add("ruff format $lintArgs")
+            $commands.Add("ruff format --check $lintArgs")
+        }
+
+        $commands.Add("python -m pytest $testArgs -q")
+        $innerCommand = [string]::Join(" && ", $commands)
+
+        Write-Host "DATABASE_URL for Docker test run: $DatabaseUrl"
+        & docker compose run --rm -e "DATABASE_URL=$DatabaseUrl" api sh -lc $innerCommand
+        if ($LASTEXITCODE -ne 0) {
+            throw "Docker test run failed."
         }
     }
 

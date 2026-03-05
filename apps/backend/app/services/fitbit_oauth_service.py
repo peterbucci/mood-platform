@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 import secrets
 import uuid
 from dataclasses import dataclass
@@ -11,10 +12,12 @@ import httpx
 from app.repositories.fitbit_oauth_repository import (
     FitbitOAuthRepository,
 )
+from app.services.fitbit_api_client import FitbitApiClient
 from app.services.fitbit_token_service import FitbitTokenRefreshError, FitbitTokenService
 from app.settings import Settings
 
 STATE_TTL_MINUTES = 10
+logger = logging.getLogger(__name__)
 
 
 class FitbitOAuthConfigurationError(Exception):
@@ -77,7 +80,7 @@ class FitbitOAuthService:
             raise FitbitOAuthStateError("Invalid or expired OAuth state.")
 
         token_payload = self.exchange_authorization_code(code=code)
-        return self._token_service.store_token(
+        expires_at = self._token_service.store_token(
             user_id=user_id,
             fitbit_user_id=token_payload.user_id,
             access_token=token_payload.access_token,
@@ -85,6 +88,20 @@ class FitbitOAuthService:
             scope=token_payload.scope,
             expires_in=token_payload.expires_in,
         )
+        try:
+            self._register_webhook_subscription(user_id=user_id)
+        except FitbitOAuthExchangeError:
+            # Keep OAuth callback non-blocking for token persistence; the worker/webhook
+            # path can still function and subscription issues can be repaired separately.
+            logger.warning(
+                (
+                    "OAuth token stored but Fitbit webhook subscription registration "
+                    "failed for user %s."
+                ),
+                user_id,
+                exc_info=True,
+            )
+        return expires_at
 
     def exchange_authorization_code(self, *, code: str) -> FitbitTokenPayload:
         self._assert_oauth_configured()
@@ -163,6 +180,42 @@ class FitbitOAuthService:
                 "Fitbit OAuth is not configured. Set FITBIT_CLIENT_ID, "
                 "FITBIT_CLIENT_SECRET, and FITBIT_REDIRECT_URI."
             )
+
+    def _register_webhook_subscription(self, *, user_id: uuid.UUID) -> None:
+        subscriber_id = self._settings.FITBIT_SUBSCRIBER_ID.strip()
+        if not subscriber_id:
+            logger.warning(
+                "Skipping Fitbit webhook subscription registration: no subscriber id set."
+            )
+            return
+
+        api_client = FitbitApiClient(
+            token_service=self._token_service,
+            http_client=self._http_client,
+        )
+        try:
+            response = api_client.register_activity_subscription(
+                user_id=user_id,
+                subscription_id="1",
+                subscriber_id=subscriber_id,
+            )
+        except httpx.HTTPError as exc:
+            raise FitbitOAuthExchangeError(
+                "Failed to register Fitbit webhook subscription."
+            ) from exc
+
+        if response.status_code == 409:
+            logger.info("Fitbit webhook subscription already exists; treating as success.")
+            return
+        if 200 <= response.status_code < 300:
+            logger.info("Fitbit webhook subscription registered.")
+            return
+        logger.warning(
+            "Fitbit webhook subscription registration failed with status=%s body=%s",
+            response.status_code,
+            response.text,
+        )
+        raise FitbitOAuthExchangeError("Failed to register Fitbit webhook subscription.")
 
     def get_status(self, *, user_id: uuid.UUID) -> tuple[bool, datetime | None]:
         try:

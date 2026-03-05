@@ -19,8 +19,20 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
-ROOT_DIR = Path(__file__).resolve().parents[3]
-ALEMBIC_CONFIG = ROOT_DIR / "apps" / "backend" / "alembic.ini"
+
+def _find_backend_root() -> Path:
+    file_path = Path(__file__).resolve()
+    for parent in file_path.parents:
+        if (parent / "alembic.ini").exists() and (parent / "app").is_dir():
+            return parent
+        nested_backend = parent / "apps" / "backend"
+        if (nested_backend / "alembic.ini").exists() and (nested_backend / "app").is_dir():
+            return nested_backend
+    raise RuntimeError("Could not locate backend root containing alembic.ini and app/.")
+
+
+ROOT_DIR = _find_backend_root()
+ALEMBIC_CONFIG = ROOT_DIR / "alembic.ini"
 
 
 class FakeFitbitServerError(Exception):
@@ -50,7 +62,7 @@ class FakeFitbitClient:
         return next_item
 
 
-def test_fulfillment_retries_transient_errors_and_handles_partial_payload(caplog) -> None:
+def test_fulfillment_fail_fast_schedules_retry_for_transient_error(caplog) -> None:
     user_id = "00000000-0000-0000-0000-00000000ee01"
     request_id = "req_retry_partial"
 
@@ -83,21 +95,20 @@ def test_fulfillment_retries_transient_errors_and_handles_partial_payload(caplog
                 backoff_seconds=(0.001, 0.001, 0.001),
                 sleep_func=lambda _: None,
             )
-            caplog.set_level(logging.WARNING)
+            caplog.set_level(logging.INFO)
             stats = service.process_pending_requests()
 
         assert stats.processed == 1
-        assert stats.fulfilled == 1
-        assert stats.failed == 0
-        assert fitbit_client.calls_by_user[user_id] == 3
-        assert "Retrying Fitbit fetch" in caplog.text
-        assert "missing Fitbit section 'sleep'" in caplog.text
+        assert stats.fulfilled == 0
+        assert stats.failed == 1
+        assert fitbit_client.calls_by_user[user_id] == 1
+        assert "Scheduled retry for request" in caplog.text
 
         with psycopg.connect(database_url) as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT status, "featureId"
+                    SELECT status, "featureId", attempts, "nextAttemptAt", "lastErrorSignal"
                     FROM requests
                     WHERE id = %s
                     """,
@@ -116,10 +127,12 @@ def test_fulfillment_retries_transient_errors_and_handles_partial_payload(caplog
                 feature_rows = cursor.fetchall()
 
         assert request_row is not None
-        assert request_row[0] == "fulfilled"
-        assert request_row[1] is not None
-        assert len(feature_rows) == 1
-        assert json.loads(feature_rows[0][0]) == {"steps": {"count": 4321}}
+        assert request_row[0] == "pending"
+        assert request_row[1] is None
+        assert request_row[2] == 1
+        assert isinstance(request_row[3], int)
+        assert request_row[4] in ("ConnectionError", "FakeFitbitServerError")
+        assert len(feature_rows) == 0
 
 
 def test_worker_continues_after_single_request_failure(caplog) -> None:
@@ -174,7 +187,7 @@ def test_worker_continues_after_single_request_failure(caplog) -> None:
         assert stats.processed == 2
         assert stats.fulfilled == 1
         assert stats.failed == 1
-        assert "Failed to fulfill request req_fail." in caplog.text
+        assert "Failed to process request req_fail." in caplog.text
 
         with psycopg.connect(database_url) as connection:
             with connection.cursor() as cursor:
@@ -272,7 +285,7 @@ def test_request_processing_is_idempotent() -> None:
         assert request_row[1] is not None
 
 
-def test_timeout_is_treated_as_retryable_failure() -> None:
+def test_slow_fetch_completes_without_service_level_timeout_retry() -> None:
     user_id = "00000000-0000-0000-0000-00000000ee05"
     request_id = "req_timeout"
 
@@ -312,7 +325,122 @@ def test_timeout_is_treated_as_retryable_failure() -> None:
             stats = service.process_pending_requests()
 
         assert stats.fulfilled == 1
-        assert fitbit_client.calls_by_user[user_id] == 2
+        assert fitbit_client.calls_by_user[user_id] == 1
+
+
+def test_fulfillment_succeeds_when_signal_fetcher_marks_missing_blob() -> None:
+    user_id = "00000000-0000-0000-0000-00000000ee06"
+    request_id = "req_missing_signal_blob"
+
+    with _temporary_database() as database_url:
+        _run_alembic_upgrade(database_url=database_url)
+        _insert_request(
+            database_url=database_url,
+            request_id=request_id,
+            user_id=user_id,
+            created_at=1700000000,
+            status="pending",
+            source="phone",
+            feature_id=None,
+        )
+
+        fitbit_client = FakeFitbitClient(
+            {
+                user_id: [
+                    {
+                        "steps": {"count": 2500},
+                        "hrv": {
+                            "__missing": True,
+                            "reason": "not_found",
+                            "raw_status": 404,
+                            "payload": {},
+                        },
+                    }
+                ]
+            }
+        )
+
+        with _sqlalchemy_session(database_url) as session:
+            service = RequestFulfillmentService(
+                repository=FeatureRequestRepository(session=session),
+                fitbit_client=fitbit_client,
+            )
+            outcome = service.process_request(request_id)
+
+        assert outcome == "fulfilled"
+        with psycopg.connect(database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT data
+                    FROM features
+                    WHERE "userId" = %s
+                    """,
+                    (user_id,),
+                )
+                feature_row = cursor.fetchone()
+        assert feature_row is not None
+        parsed_payload = json.loads(feature_row[0])
+        assert parsed_payload["steps"] == {"count": 2500}
+        assert "missing_hrv" in parsed_payload["notes"]
+
+
+def test_fulfillment_handles_malformed_signal_payload_with_partial_note() -> None:
+    user_id = "00000000-0000-0000-0000-00000000ee07"
+    request_id = "req_malformed_signal_blob"
+
+    with _temporary_database() as database_url:
+        _run_alembic_upgrade(database_url=database_url)
+        _insert_request(
+            database_url=database_url,
+            request_id=request_id,
+            user_id=user_id,
+            created_at=1700000000,
+            status="pending",
+            source="phone",
+            feature_id=None,
+        )
+
+        fitbit_client = FakeFitbitClient(
+            {
+                user_id: [
+                    {
+                        "steps": {"count": 1800},
+                        "spo2": {
+                            "__missing": False,
+                            "reason": None,
+                            "raw_status": 200,
+                            "payload": {"spo2": [{"value": {"avg": 97.8}}]},
+                        },
+                    }
+                ]
+            }
+        )
+
+        with _sqlalchemy_session(database_url) as session:
+            service = RequestFulfillmentService(
+                repository=FeatureRequestRepository(session=session),
+                fitbit_client=fitbit_client,
+            )
+            outcome = service.process_request(request_id)
+
+        assert outcome == "fulfilled"
+        with psycopg.connect(database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT data
+                    FROM features
+                    WHERE "userId" = %s
+                    """,
+                    (user_id,),
+                )
+                feature_row = cursor.fetchone()
+        assert feature_row is not None
+        parsed_payload = json.loads(feature_row[0])
+        assert parsed_payload["steps"] == {"count": 1800}
+        assert parsed_payload["spo2"]["avg_spo2"] == 97.8
+        assert "partial_spo2" in parsed_payload["notes"]
 
 
 class _temporary_database:
