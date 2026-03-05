@@ -80,6 +80,16 @@ class FitbitTokenRepository:
             self._session.rollback()
             raise FitbitTokenRepositoryError("Failed to delete Fitbit token.") from exc
 
+    def get_user_id_by_fitbit_user_id(self, *, fitbit_user_id: str) -> uuid.UUID | None:
+        try:
+            return self._session.execute(
+                sa.select(FitbitToken.user_id).where(FitbitToken.fitbit_user_id == fitbit_user_id)
+            ).scalar_one_or_none()
+        except SQLAlchemyError as exc:
+            raise FitbitTokenRepositoryError(
+                "Failed to load internal user by Fitbit user id."
+            ) from exc
+
     def _ensure_user_exists(self, *, user_id: uuid.UUID) -> None:
         existing_user_id = self._session.execute(
             sa.select(User.id).where(User.id == user_id)

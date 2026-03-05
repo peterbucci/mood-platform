@@ -12,10 +12,12 @@ from app.repositories.fitbit_token_repository import FitbitTokenRepository
 from app.repositories.mood_entry_repository import MoodEntryRepository
 from app.repositories.postgres import PostgresRepository
 from app.repositories.redis import RedisRepository
+from app.repositories.webhook_job_repository import WebhookJobRepository
 from app.services.feature_request_service import FeatureRequestService
 from app.services.feature_service import FeatureService
 from app.services.fitbit_oauth_service import FitbitOAuthService
 from app.services.fitbit_token_service import FitbitTokenService
+from app.services.fitbit_webhook_ingestion_service import FitbitWebhookIngestionService
 from app.services.health_service import HealthService
 from app.services.mood_entry_service import MoodEntryService, get_owner_user_id
 from app.settings import get_settings
@@ -75,6 +77,12 @@ def get_fitbit_token_repository(
     return FitbitTokenRepository(session=db_session)
 
 
+def get_webhook_job_repository(
+    db_session: Annotated[Session, Depends(get_db_session)],
+) -> WebhookJobRepository:
+    return WebhookJobRepository(session=db_session)
+
+
 def get_feature_request_service(
     feature_request_repository: Annotated[
         FeatureRequestRepository, Depends(get_feature_request_repository)
@@ -120,5 +128,16 @@ def get_fitbit_oauth_service(
     return FitbitOAuthService(
         state_repository=fitbit_oauth_repository,
         token_service=fitbit_token_service,
+        settings=get_settings(),
+    )
+
+
+def get_fitbit_webhook_ingestion_service(
+    fitbit_token_repository: Annotated[FitbitTokenRepository, Depends(get_fitbit_token_repository)],
+    webhook_job_repository: Annotated[WebhookJobRepository, Depends(get_webhook_job_repository)],
+) -> FitbitWebhookIngestionService:
+    return FitbitWebhookIngestionService(
+        fitbit_token_repository=fitbit_token_repository,
+        webhook_job_repository=webhook_job_repository,
         settings=get_settings(),
     )

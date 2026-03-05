@@ -1,9 +1,21 @@
 import logging
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import PlainTextResponse
 
+from app.dependencies import get_fitbit_webhook_ingestion_service
+from app.services.fitbit_webhook_ingestion_service import FitbitWebhookIngestionService
 from app.services.fitbit_webhook_signature import FitbitWebhookSignatureVerifier
 from app.settings import get_settings
 
@@ -28,7 +40,14 @@ def verify_fitbit_webhook_challenge(
 
 
 @router.post("/webhook", status_code=status.HTTP_204_NO_CONTENT)
-async def ingest_fitbit_webhook(request: Request) -> Response:
+async def ingest_fitbit_webhook(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    webhook_ingestion_service: Annotated[
+        FitbitWebhookIngestionService,
+        Depends(get_fitbit_webhook_ingestion_service),
+    ],
+) -> Response:
     request_id = str(uuid.uuid4())
     raw_body = getattr(request.state, "raw_body", b"")
     if not isinstance(raw_body, bytes):
@@ -81,5 +100,10 @@ async def ingest_fitbit_webhook(request: Request) -> Response:
     logger.info(
         "Fitbit webhook accepted.",
         extra={"request_id": request_id, "verified": True, "event_count": len(payload)},
+    )
+    background_tasks.add_task(
+        webhook_ingestion_service.enqueue_events,
+        payload_events=payload,
+        request_id=request_id,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
