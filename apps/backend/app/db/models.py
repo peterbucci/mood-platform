@@ -112,6 +112,27 @@ class FitbitOAuthConnection(Base):
     )
 
 
+class FitbitToken(Base):
+    __tablename__ = "fitbit_tokens"
+    __table_args__ = (sa.Index("ix_fitbit_tokens_expires_at", "expires_at"),)
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    fitbit_user_id: Mapped[str | None] = mapped_column(sa.Text)
+    access_token: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    refresh_token: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    scope: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.text("now()"),
+    )
+
+
 class FeatureSetMixin:
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
