@@ -5,7 +5,7 @@ import uuid
 from typing import Any
 
 from app.db.models import Feature
-from app.repositories.feature_repository import FeatureRepository
+from app.repositories.feature_repository import FeatureDeleteWriteError, FeatureRepository
 
 
 class FeatureNotFoundError(Exception):
@@ -13,6 +13,10 @@ class FeatureNotFoundError(Exception):
 
 
 class FeatureDataParseError(Exception):
+    pass
+
+
+class FeatureDeleteError(Exception):
     pass
 
 
@@ -43,6 +47,42 @@ class FeatureService:
             offset=offset,
         )
         return [self._serialize_feature(feature) for feature in features]
+
+    def delete_feature(self, *, feature_id: str) -> dict[str, str]:
+        feature = self._repository.get_feature_by_id_for_update(
+            user_id=str(self._owner_user_id),
+            feature_id=feature_id,
+        )
+        if feature is None:
+            self._repository.rollback()
+            raise FeatureNotFoundError(f"Feature {feature_id} was not found for current user.")
+
+        try:
+            self._repository.delete_feature_labels(
+                user_id=str(self._owner_user_id),
+                feature_id=feature.id,
+                commit=False,
+            )
+            self._repository.null_requests_feature_reference(
+                user_id=str(self._owner_user_id),
+                feature_id=feature.id,
+                commit=False,
+            )
+            deleted = self._repository.delete_feature(
+                user_id=str(self._owner_user_id),
+                feature_id=feature.id,
+                commit=False,
+            )
+        except FeatureDeleteWriteError as exc:
+            self._repository.rollback()
+            raise FeatureDeleteError(str(exc)) from exc
+
+        if not deleted:
+            self._repository.rollback()
+            raise FeatureNotFoundError(f"Feature {feature_id} was not found for current user.")
+
+        self._repository.commit()
+        return {"id": feature.id}
 
     def _serialize_feature(self, feature: Feature) -> dict[str, Any]:
         try:
