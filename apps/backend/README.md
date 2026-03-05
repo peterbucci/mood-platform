@@ -89,6 +89,37 @@ Webhook verification endpoint:
   - returns HTTP 200 with plain-text body equal to `<challenge>`
   - returns HTTP 400 with `Missing verification challenge` when `verify` is missing
 
+Webhook ingestion endpoint:
+
+- `POST /fitbit/webhook`
+  - verifies `X-Fitbit-Signature` against the raw request body with HMAC-SHA256
+  - requires `FITBIT_WEBHOOK_SECRET`
+  - rejects missing signature with `401`
+  - rejects invalid signature with `403`
+  - acknowledges quickly with `204` and enqueues async `webhook_jobs` rows
+  - coalesces duplicate jobs per user within `FITBIT_WEBHOOK_COALESCE_SECONDS`
+
+Local webhook ingestion test:
+
+1. Set env vars:
+   - `FITBIT_WEBHOOK_SECRET`
+   - `FITBIT_WEBHOOK_COALESCE_SECONDS` (optional; default `30`)
+2. Generate test payload + signature (Python one-liner):
+   ```bash
+   python - <<'PY'
+   import hashlib, hmac
+   body = b'[{"ownerId":"fitbit-user-1","collectionType":"sleep","date":"2026-03-05"}]'
+   print(hmac.new(b"replace-with-fitbit-webhook-secret", body, hashlib.sha256).hexdigest())
+   PY
+   ```
+3. Send request:
+   ```bash
+   curl -i -X POST http://localhost:8000/fitbit/webhook \
+     -H "Content-Type: application/json" \
+     -H "X-Fitbit-Signature: <signature-from-step-2>" \
+     -d '[{"ownerId":"fitbit-user-1","collectionType":"sleep","date":"2026-03-05"}]'
+   ```
+
 Required environment variables:
 
 - `FITBIT_CLIENT_ID`
