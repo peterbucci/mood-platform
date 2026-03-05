@@ -8,12 +8,14 @@ from app.repositories.feature_repository import FeatureRepository
 from app.repositories.feature_request_repository import FeatureRequestRepository
 from app.repositories.feature_set_repository import FeatureSetRepository
 from app.repositories.fitbit_oauth_repository import FitbitOAuthRepository
+from app.repositories.fitbit_token_repository import FitbitTokenRepository
 from app.repositories.mood_entry_repository import MoodEntryRepository
 from app.repositories.postgres import PostgresRepository
 from app.repositories.redis import RedisRepository
 from app.services.feature_request_service import FeatureRequestService
 from app.services.feature_service import FeatureService
 from app.services.fitbit_oauth_service import FitbitOAuthService
+from app.services.fitbit_token_service import FitbitTokenService
 from app.services.health_service import HealthService
 from app.services.mood_entry_service import MoodEntryService, get_owner_user_id
 from app.settings import get_settings
@@ -67,6 +69,12 @@ def get_fitbit_oauth_repository(
     return FitbitOAuthRepository(session=db_session)
 
 
+def get_fitbit_token_repository(
+    db_session: Annotated[Session, Depends(get_db_session)],
+) -> FitbitTokenRepository:
+    return FitbitTokenRepository(session=db_session)
+
+
 def get_feature_request_service(
     feature_request_repository: Annotated[
         FeatureRequestRepository, Depends(get_feature_request_repository)
@@ -96,10 +104,21 @@ def get_mood_entry_service(
     )
 
 
+def get_fitbit_token_service(
+    fitbit_token_repository: Annotated[FitbitTokenRepository, Depends(get_fitbit_token_repository)],
+) -> FitbitTokenService:
+    return FitbitTokenService(
+        repository=fitbit_token_repository,
+        settings=get_settings(),
+    )
+
+
 def get_fitbit_oauth_service(
     fitbit_oauth_repository: Annotated[FitbitOAuthRepository, Depends(get_fitbit_oauth_repository)],
+    fitbit_token_service: Annotated[FitbitTokenService, Depends(get_fitbit_token_service)],
 ) -> FitbitOAuthService:
     return FitbitOAuthService(
-        repository=fitbit_oauth_repository,
+        state_repository=fitbit_oauth_repository,
+        token_service=fitbit_token_service,
         settings=get_settings(),
     )

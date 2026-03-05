@@ -10,8 +10,8 @@ import httpx
 
 from app.repositories.fitbit_oauth_repository import (
     FitbitOAuthRepository,
-    FitbitOAuthRepositoryError,
 )
+from app.services.fitbit_token_service import FitbitTokenRefreshError, FitbitTokenService
 from app.settings import Settings
 
 STATE_TTL_MINUTES = 10
@@ -42,18 +42,20 @@ class FitbitOAuthService:
     def __init__(
         self,
         *,
-        repository: FitbitOAuthRepository,
+        state_repository: FitbitOAuthRepository,
+        token_service: FitbitTokenService,
         settings: Settings,
         http_client: httpx.Client | None = None,
     ) -> None:
-        self._repository = repository
+        self._state_repository = state_repository
+        self._token_service = token_service
         self._settings = settings
         self._http_client = http_client
 
     def start_authorization(self, *, user_id: uuid.UUID) -> str:
         self._assert_oauth_configured()
         state = secrets.token_urlsafe(32)
-        self._repository.create_state(
+        self._state_repository.create_state(
             state=state,
             user_id=user_id,
             expires_at=datetime.now(tz=UTC) + timedelta(minutes=STATE_TTL_MINUTES),
@@ -70,21 +72,19 @@ class FitbitOAuthService:
     ) -> datetime:
         self._assert_oauth_configured()
 
-        state_valid = self._repository.consume_state(state=state, user_id=user_id)
+        state_valid = self._state_repository.consume_state(state=state, user_id=user_id)
         if not state_valid:
             raise FitbitOAuthStateError("Invalid or expired OAuth state.")
 
         token_payload = self.exchange_authorization_code(code=code)
-        expires_at = datetime.now(tz=UTC) + timedelta(seconds=token_payload.expires_in)
-        self._repository.upsert_connection(
+        return self._token_service.store_token(
             user_id=user_id,
             fitbit_user_id=token_payload.user_id,
             access_token=token_payload.access_token,
             refresh_token=token_payload.refresh_token,
             scope=token_payload.scope,
-            expires_at=expires_at,
+            expires_in=token_payload.expires_in,
         )
-        return expires_at
 
     def exchange_authorization_code(self, *, code: str) -> FitbitTokenPayload:
         self._assert_oauth_configured()
@@ -166,16 +166,16 @@ class FitbitOAuthService:
 
     def get_status(self, *, user_id: uuid.UUID) -> tuple[bool, datetime | None]:
         try:
-            connection = self._repository.get_connection(user_id=user_id)
-        except FitbitOAuthRepositoryError as exc:
+            stored_token = self._token_service.get_stored_token(user_id=user_id)
+        except FitbitTokenRefreshError as exc:
             raise FitbitOAuthExchangeError("Failed to load OAuth connection status.") from exc
 
-        if connection is None:
+        if stored_token is None:
             return False, None
-        return True, connection.expires_at
+        return True, stored_token.expires_at
 
     def unlink(self, *, user_id: uuid.UUID) -> bool:
         try:
-            return self._repository.delete_connection(user_id=user_id)
-        except FitbitOAuthRepositoryError as exc:
+            return self._token_service.delete_stored_token(user_id=user_id)
+        except FitbitTokenRefreshError as exc:
             raise FitbitOAuthExchangeError("Failed to unlink OAuth connection.") from exc
