@@ -153,6 +153,12 @@ class FitbitApiClient:
             url=self._fitbit_url(f"/1/user/-/foods/log/water/date/{date_iso}.json"),
         )
 
+    def fetch_user_profile(self, *, user_id: uuid.UUID) -> httpx.Response:
+        return self.fitbit_fetch(
+            user_id=user_id,
+            url=self._fitbit_url("/1/user/-/profile.json"),
+        )
+
     def register_activity_subscription(
         self,
         *,

@@ -18,6 +18,7 @@ DEFAULT_FITBIT_MAX_RETRIES = 2
 DEFAULT_FITBIT_BACKOFF_BASE_SECONDS = 0.5
 DEFAULT_FITBIT_MAX_CONCURRENT_FETCHES = 3
 DEFAULT_FITBIT_FORBIDDEN_CACHE_SECONDS = 3600
+DEFAULT_FITBIT_TIMEZONE_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,7 @@ class Settings:
     FITBIT_BACKOFF_BASE_SECONDS: float = DEFAULT_FITBIT_BACKOFF_BASE_SECONDS
     FITBIT_MAX_CONCURRENT_FETCHES: int = DEFAULT_FITBIT_MAX_CONCURRENT_FETCHES
     FITBIT_FORBIDDEN_CACHE_SECONDS: int = DEFAULT_FITBIT_FORBIDDEN_CACHE_SECONDS
+    FITBIT_TIMEZONE_CACHE_TTL_SECONDS: int = DEFAULT_FITBIT_TIMEZONE_CACHE_TTL_SECONDS
 
     def fitbit_scope_query_value(self) -> str:
         return " ".join(self.FITBIT_OAUTH_SCOPE.split())
@@ -146,6 +148,15 @@ def get_settings() -> Settings:
     except ValueError:
         fitbit_forbidden_cache_seconds = DEFAULT_FITBIT_FORBIDDEN_CACHE_SECONDS
 
+    configured_fitbit_timezone_cache_ttl_seconds = os.getenv(
+        "FITBIT_TIMEZONE_CACHE_TTL_SECONDS",
+        str(DEFAULT_FITBIT_TIMEZONE_CACHE_TTL_SECONDS),
+    ).strip()
+    try:
+        fitbit_timezone_cache_ttl_seconds = int(configured_fitbit_timezone_cache_ttl_seconds)
+    except ValueError:
+        fitbit_timezone_cache_ttl_seconds = DEFAULT_FITBIT_TIMEZONE_CACHE_TTL_SECONDS
+
     return Settings(
         FEATURE_EXTRACTOR_VERSION=configured_version,
         FITBIT_CLIENT_ID=os.getenv("FITBIT_CLIENT_ID", "").strip(),
@@ -179,4 +190,5 @@ def get_settings() -> Settings:
         FITBIT_BACKOFF_BASE_SECONDS=max(0.05, fitbit_backoff_base_seconds),
         FITBIT_MAX_CONCURRENT_FETCHES=max(1, fitbit_max_concurrent_fetches),
         FITBIT_FORBIDDEN_CACHE_SECONDS=max(60, fitbit_forbidden_cache_seconds),
+        FITBIT_TIMEZONE_CACHE_TTL_SECONDS=max(60, fitbit_timezone_cache_ttl_seconds),
     )
