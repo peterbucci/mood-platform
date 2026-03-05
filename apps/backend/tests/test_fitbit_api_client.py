@@ -116,3 +116,20 @@ def test_fitbit_endpoint_helpers_include_breathing_all_and_spo2_range_paths() ->
         "/1/user/-/br/date/2026-03-05/all.json",
         "/1/user/-/spo2/date/2026-02-27/2026-03-05.json",
     ]
+
+
+def test_fetch_user_profile_uses_profile_endpoint() -> None:
+    user_id = uuid.UUID("00000000-0000-0000-0000-00000000ca05")
+    token_service = _FakeTokenService()
+    seen_paths: list[str] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen_paths.append(str(request.url.path))
+        return httpx.Response(200, json={"user": {"timezone": "America/New_York"}})
+
+    with httpx.Client(transport=httpx.MockTransport(_handler)) as http_client:
+        client = FitbitApiClient(token_service=token_service, http_client=http_client)
+        response = client.fetch_user_profile(user_id=user_id)
+
+    assert response.status_code == 200
+    assert seen_paths == ["/1/user/-/profile.json"]

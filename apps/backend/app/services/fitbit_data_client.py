@@ -10,6 +10,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 from sqlalchemy.orm import Session, sessionmaker
@@ -74,10 +75,16 @@ class StaticFitbitPayloadClient:
         del user_id, before_timestamp_iso
         return _missing_signal(reason="not_supported")
 
+    def fetch_user_timezone(self, *, user_id: str) -> dict[str, Any]:
+        del user_id
+        return _missing_signal(reason="not_supported")
+
 
 class FitbitSignalPullClient:
     _forbidden_cache_lock = threading.Lock()
     _forbidden_cache_until: dict[tuple[str, str], float] = {}
+    _timezone_cache_lock = threading.Lock()
+    _timezone_cache_by_user: dict[str, tuple[float, dict[str, Any]]] = {}
 
     def __init__(
         self,
@@ -91,6 +98,7 @@ class FitbitSignalPullClient:
         self._backoff_base_seconds = max(0.05, self._settings.FITBIT_BACKOFF_BASE_SECONDS)
         self._max_concurrent_fetches = max(1, self._settings.FITBIT_MAX_CONCURRENT_FETCHES)
         self._forbidden_cache_seconds = max(60, self._settings.FITBIT_FORBIDDEN_CACHE_SECONDS)
+        self._timezone_cache_ttl_seconds = max(60, self._settings.FITBIT_TIMEZONE_CACHE_TTL_SECONDS)
 
     def fetch_user_data(self, *, user_id: str) -> dict[str, Any]:
         date_iso = datetime.now(tz=UTC).date().isoformat()
@@ -169,6 +177,71 @@ class FitbitSignalPullClient:
             "spo2_range": signal_results["spo2_range"],
             "temp_range": signal_results["temp_range"],
         }
+
+    def fetch_user_timezone(self, *, user_id: str) -> dict[str, Any]:
+        cached_timezone = self._read_timezone_cache(user_id=user_id)
+        if cached_timezone is not None:
+            return cached_timezone
+
+        raw_timezone_blob = self._fetch_fitbit_timezone_signal(user_id=user_id)
+        normalized_blob = _normalize_timezone_blob(raw_timezone_blob)
+        cache_ttl_seconds = self._timezone_cache_ttl_seconds
+        if normalized_blob.get("__missing", False):
+            cache_ttl_seconds = min(cache_ttl_seconds, 3600)
+        self._write_timezone_cache(
+            user_id=user_id,
+            timezone_blob=normalized_blob,
+            ttl_seconds=cache_ttl_seconds,
+        )
+        return normalized_blob
+
+    def _fetch_fitbit_timezone_signal(self, *, user_id: str) -> dict[str, Any]:
+        user_uuid = uuid.UUID(user_id)
+        with self._session_factory() as session:
+            with httpx.Client(timeout=10) as http_client:
+                token_service = FitbitTokenService(
+                    repository=FitbitTokenRepository(session=session),
+                    settings=self._settings,
+                    http_client=http_client,
+                )
+                api_client = FitbitApiClient(
+                    token_service=token_service,
+                    http_client=http_client,
+                    min_fetch_interval_seconds=self._settings.FITBIT_MIN_FETCH_INTERVAL_SECONDS,
+                )
+                if token_service.is_reauth_required(user_id=user_uuid):
+                    return _missing_signal(reason="needs_reauth")
+                return self._fetch_signal(
+                    signal_name="profile_timezone",
+                    fetch_fn=lambda: api_client.fetch_user_profile(user_id=user_uuid),
+                    token_service=token_service,
+                    user_id=user_uuid,
+                )
+
+    def _read_timezone_cache(self, *, user_id: str) -> dict[str, Any] | None:
+        now = time.monotonic()
+        with self._timezone_cache_lock:
+            cache_entry = self._timezone_cache_by_user.get(user_id)
+            if cache_entry is None:
+                return None
+            expires_at, timezone_blob = cache_entry
+            if expires_at <= now:
+                self._timezone_cache_by_user.pop(user_id, None)
+                return None
+            return dict(timezone_blob)
+
+    def _write_timezone_cache(
+        self,
+        *,
+        user_id: str,
+        timezone_blob: dict[str, Any],
+        ttl_seconds: int,
+    ) -> None:
+        with self._timezone_cache_lock:
+            self._timezone_cache_by_user[user_id] = (
+                time.monotonic() + max(60, int(ttl_seconds)),
+                dict(timezone_blob),
+            )
 
     def fetch_latest_activity_for_anchor(
         self,
@@ -669,6 +742,71 @@ def _needs_reauth_signal_payload() -> dict[str, Any]:
     }
 
 
+def _normalize_timezone_blob(signal_blob: dict[str, Any]) -> dict[str, Any]:
+    if signal_blob.get("__missing", False):
+        return _missing_signal(
+            reason="timezone_unavailable",
+            raw_status=_to_int(signal_blob.get("raw_status")),
+        )
+
+    payload = signal_blob.get("payload")
+    if not isinstance(payload, dict):
+        return _missing_signal(
+            reason="timezone_unavailable",
+            raw_status=_to_int(signal_blob.get("raw_status")),
+        )
+
+    timezone_candidate = _extract_timezone_candidate(payload=payload)
+    if timezone_candidate is None:
+        return _missing_signal(
+            reason="timezone_unavailable",
+            raw_status=_to_int(signal_blob.get("raw_status")),
+        )
+    if not _is_valid_timezone_name(timezone_candidate):
+        return _missing_signal(
+            reason="timezone_invalid",
+            raw_status=_to_int(signal_blob.get("raw_status")),
+        )
+
+    return _present_signal(
+        payload={"timezone": timezone_candidate},
+        raw_status=_to_int(signal_blob.get("raw_status")) or 200,
+    )
+
+
+def _extract_timezone_candidate(*, payload: dict[str, Any]) -> str | None:
+    candidates: list[Any] = [
+        payload.get("timezone"),
+        payload.get("timeZone"),
+        _get_nested(payload, "user", "timezone"),
+        _get_nested(payload, "user", "timeZone"),
+    ]
+    for candidate in candidates:
+        if not isinstance(candidate, str):
+            continue
+        normalized = candidate.strip()
+        if normalized:
+            return normalized
+    return None
+
+
+def _get_nested(source: Any, *keys: str) -> Any:
+    current = source
+    for key in keys:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current
+
+
+def _is_valid_timezone_name(value: str) -> bool:
+    try:
+        ZoneInfo(value)
+        return True
+    except ZoneInfoNotFoundError:
+        return False
+
+
 def _retry_after_seconds(response: httpx.Response) -> float | None:
     header_value = response.headers.get("Retry-After")
     if not header_value:
@@ -676,4 +814,13 @@ def _retry_after_seconds(response: httpx.Response) -> float | None:
     try:
         return max(0.0, float(header_value.strip()))
     except ValueError:
+        return None
+
+
+def _to_int(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
         return None

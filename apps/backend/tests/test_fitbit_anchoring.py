@@ -19,6 +19,15 @@ def test_resolve_source_timezone_falls_back_when_invalid() -> None:
     assert timezone_name == "UTC"
 
 
+def test_resolve_source_timezone_prefers_fitbit_timezone_over_client_timezone() -> None:
+    timezone_name = resolve_source_timezone(
+        client_features={"timezone": "America/Chicago"},
+        preferred_timezone="America/Los_Angeles",
+        fallback_timezone="UTC",
+    )
+    assert timezone_name == "America/Los_Angeles"
+
+
 def test_build_anchor_context_uses_local_date_and_night_anchor() -> None:
     # 2026-03-05T14:30:00Z => 2026-03-05 08:30 local in America/Chicago.
     created_at = 1772721000

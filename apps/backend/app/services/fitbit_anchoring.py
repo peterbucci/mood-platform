@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 @dataclass(frozen=True)
 class FitbitAnchorContext:
     source_timezone: str
+    timezone_notes: tuple[str, ...]
     anchor_utc: datetime
     anchor_local: datetime
     local_date_iso: str
@@ -21,7 +22,13 @@ def resolve_source_timezone(
     *,
     client_features: dict[str, Any] | None,
     fallback_timezone: str,
+    preferred_timezone: str | None = None,
 ) -> str:
+    if isinstance(preferred_timezone, str):
+        normalized_preferred = preferred_timezone.strip()
+        if normalized_preferred and _is_valid_timezone(normalized_preferred):
+            return normalized_preferred
+
     if isinstance(client_features, dict):
         for key in ("source_timezone", "timezone", "tz", "timeZone"):
             value = client_features.get(key)
@@ -44,11 +51,14 @@ def build_anchor_context(
     fallback_timezone: str,
     night_anchor_start_hour: int,
     night_anchor_end_hour: int,
+    preferred_timezone: str | None = None,
+    timezone_notes: list[str] | tuple[str, ...] | None = None,
 ) -> FitbitAnchorContext:
     anchor_utc = _request_anchor_utc(created_at)
     source_timezone = resolve_source_timezone(
         client_features=client_features,
         fallback_timezone=fallback_timezone,
+        preferred_timezone=preferred_timezone,
     )
     tzinfo = ZoneInfo(source_timezone)
     anchor_local = anchor_utc.astimezone(tzinfo)
@@ -73,6 +83,7 @@ def build_anchor_context(
 
     return FitbitAnchorContext(
         source_timezone=source_timezone,
+        timezone_notes=tuple(timezone_notes or ()),
         anchor_utc=anchor_utc,
         anchor_local=anchor_local,
         local_date_iso=local_date.isoformat(),

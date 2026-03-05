@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.repositories.feature_request_repository import PENDING_STATUS, FeatureRequestRepository
 from app.services.fitbit_anchoring import FitbitAnchorContext, build_anchor_context
@@ -29,6 +30,12 @@ class FulfillmentRunStats:
     fulfilled: int = 0
     skipped: int = 0
     failed: int = 0
+
+
+@dataclass(frozen=True)
+class TimezoneResolution:
+    source_timezone: str
+    notes: tuple[str, ...] = ()
 
 
 class RequestFulfillmentService:
@@ -248,16 +255,27 @@ class RequestFulfillmentService:
             request_id=request_id,
         )
 
+        feature_client_features = dict(client_features)
+        feature_client_features["source_timezone"] = request_context.source_timezone
+
         if not isinstance(raw_fitbit_data, dict):
             logger.warning(
                 "Fitbit payload for request %s is not an object; storing empty feature object.",
                 request_id,
             )
-            return build_feature_payload(
+            payload = build_feature_payload(
                 raw_fitbit_data={},
                 anchor_datetime=request_context.anchor_local,
-                client_features=client_features,
+                client_features=feature_client_features,
                 weather_context=weather_context,
+            )
+            payload = self._attach_feature_window_metadata(
+                payload=payload,
+                request_context=request_context,
+            )
+            return self._attach_timezone_resolution_notes(
+                payload=payload,
+                request_context=request_context,
             )
 
         if not raw_fitbit_data:
@@ -265,20 +283,32 @@ class RequestFulfillmentService:
                 "Fitbit payload for request %s is empty; storing empty feature object.",
                 request_id,
             )
-            return build_feature_payload(
+            payload = build_feature_payload(
                 raw_fitbit_data={},
                 anchor_datetime=request_context.anchor_local,
-                client_features=client_features,
+                client_features=feature_client_features,
                 weather_context=weather_context,
+            )
+            payload = self._attach_feature_window_metadata(
+                payload=payload,
+                request_context=request_context,
+            )
+            return self._attach_timezone_resolution_notes(
+                payload=payload,
+                request_context=request_context,
             )
 
         payload = build_feature_payload(
             raw_fitbit_data=raw_fitbit_data,
             anchor_datetime=request_context.anchor_local,
-            client_features=client_features,
+            client_features=feature_client_features,
             weather_context=weather_context,
         )
         payload = self._attach_feature_window_metadata(
+            payload=payload,
+            request_context=request_context,
+        )
+        payload = self._attach_timezone_resolution_notes(
             payload=payload,
             request_context=request_context,
         )
@@ -371,13 +401,93 @@ class RequestFulfillmentService:
         request: Any,
         client_features: dict[str, Any],
     ) -> FitbitAnchorContext:
+        timezone_resolution = self._resolve_timezone_for_request(
+            user_id=getattr(request, "user_id", ""),
+            client_features=client_features,
+        )
         return build_anchor_context(
             created_at=getattr(request, "created_at", None),
             client_features=client_features,
             fallback_timezone=self._settings.FITBIT_DEFAULT_TIMEZONE,
             night_anchor_start_hour=self._settings.NIGHT_ANCHOR_START_HOUR,
             night_anchor_end_hour=self._settings.NIGHT_ANCHOR_END_HOUR,
+            preferred_timezone=timezone_resolution.source_timezone,
+            timezone_notes=timezone_resolution.notes,
         )
+
+    def _resolve_timezone_for_request(
+        self,
+        *,
+        user_id: str,
+        client_features: dict[str, Any],
+    ) -> TimezoneResolution:
+        fitbit_timezone_blob = self._fetch_fitbit_timezone(user_id=user_id)
+        fitbit_timezone = self._timezone_from_blob(fitbit_timezone_blob)
+        if fitbit_timezone is not None:
+            return TimezoneResolution(source_timezone=fitbit_timezone)
+
+        fitbit_note = "timezone_from_fitbit_unavailable"
+        if isinstance(fitbit_timezone_blob, dict):
+            reason = fitbit_timezone_blob.get("reason")
+            if isinstance(reason, str) and reason == "timezone_invalid":
+                fitbit_note = "timezone_from_fitbit_invalid"
+
+        client_timezone = _extract_valid_timezone_from_client_features(
+            client_features=client_features
+        )
+        if client_timezone is not None:
+            return TimezoneResolution(
+                source_timezone=client_timezone,
+                notes=(fitbit_note, "timezone_fallback_to_client"),
+            )
+
+        return TimezoneResolution(
+            source_timezone="UTC",
+            notes=(fitbit_note, "timezone_fallback_to_utc"),
+        )
+
+    def _fetch_fitbit_timezone(self, *, user_id: str) -> dict[str, Any]:
+        fetch_timezone = getattr(self._fitbit_client, "fetch_user_timezone", None)
+        if not callable(fetch_timezone):
+            return {
+                "__missing": True,
+                "reason": "timezone_unavailable",
+                "raw_status": None,
+                "payload": {},
+            }
+        try:
+            timezone_blob = fetch_timezone(user_id=user_id)
+        except Exception:
+            logger.exception("Failed to fetch Fitbit timezone for user %s.", user_id)
+            return {
+                "__missing": True,
+                "reason": "timezone_unavailable",
+                "raw_status": None,
+                "payload": {},
+            }
+        if not isinstance(timezone_blob, dict):
+            return {
+                "__missing": True,
+                "reason": "timezone_unavailable",
+                "raw_status": None,
+                "payload": {},
+            }
+        return timezone_blob
+
+    @staticmethod
+    def _timezone_from_blob(timezone_blob: dict[str, Any]) -> str | None:
+        if timezone_blob.get("__missing", False):
+            return None
+        payload = timezone_blob.get("payload")
+        if not isinstance(payload, dict):
+            return None
+        candidate = payload.get("timezone")
+        if not isinstance(candidate, str):
+            return None
+        normalized = candidate.strip()
+        if not normalized or not _is_valid_timezone_name(normalized):
+            return None
+        return normalized
 
     @staticmethod
     def _attach_feature_window_metadata(
@@ -401,6 +511,26 @@ class RequestFulfillmentService:
             }
         )
         payload_copy["meta"] = meta
+        return payload_copy
+
+    @staticmethod
+    def _attach_timezone_resolution_notes(
+        *,
+        payload: dict[str, Any],
+        request_context: FitbitAnchorContext,
+    ) -> dict[str, Any]:
+        if not request_context.timezone_notes:
+            return payload
+        payload_copy = dict(payload)
+        notes_value = payload_copy.get("notes")
+        if isinstance(notes_value, list):
+            notes = [note for note in notes_value if isinstance(note, str)]
+        else:
+            notes = []
+        for note in request_context.timezone_notes:
+            if note not in notes:
+                notes.append(note)
+        payload_copy["notes"] = notes
         return payload_copy
 
     @staticmethod
@@ -520,3 +650,24 @@ def _to_str(value: Any) -> str | None:
         stripped = value.strip()
         return stripped if stripped else None
     return None
+
+
+def _extract_valid_timezone_from_client_features(*, client_features: dict[str, Any]) -> str | None:
+    for key in ("source_timezone", "timezone", "tz", "timeZone"):
+        value = client_features.get(key)
+        if not isinstance(value, str):
+            continue
+        normalized = value.strip()
+        if not normalized:
+            continue
+        if _is_valid_timezone_name(normalized):
+            return normalized
+    return None
+
+
+def _is_valid_timezone_name(value: str) -> bool:
+    try:
+        ZoneInfo(value)
+        return True
+    except ZoneInfoNotFoundError:
+        return False

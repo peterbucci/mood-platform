@@ -8,6 +8,7 @@ from app.services.fitbit_data_client import (
     FitbitAuthorizationError,
     FitbitSignalPullClient,
     StaticFitbitPayloadClient,
+    _normalize_timezone_blob,
     build_fitbit_client,
 )
 from app.settings import Settings
@@ -193,16 +194,75 @@ def test_build_fitbit_client_prefers_static_payload_when_configured(monkeypatch)
     assert client.fetch_user_data(user_id="user-1") == {"steps": {"count": 1234}}
 
 
+def test_fetch_user_timezone_uses_cached_fitbit_timezone(monkeypatch) -> None:
+    client = FitbitSignalPullClient(  # type: ignore[arg-type]
+        session_factory=_UnusedSessionFactory(),
+        settings=_test_settings(max_retries=0, timezone_cache_ttl_seconds=3600),
+    )
+    calls = 0
+
+    def _fake_fetch_timezone_signal(*, user_id: str) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        assert user_id == "00000000-0000-0000-0000-00000000cd03"
+        return {
+            "__missing": False,
+            "reason": None,
+            "raw_status": 200,
+            "payload": {"user": {"timezone": "America/New_York"}},
+        }
+
+    monkeypatch.setattr(client, "_fetch_fitbit_timezone_signal", _fake_fetch_timezone_signal)
+
+    first = client.fetch_user_timezone(user_id="00000000-0000-0000-0000-00000000cd03")
+    second = client.fetch_user_timezone(user_id="00000000-0000-0000-0000-00000000cd03")
+
+    assert calls == 1
+    assert first["__missing"] is False
+    assert first["payload"]["timezone"] == "America/New_York"
+    assert second["__missing"] is False
+    assert second["payload"]["timezone"] == "America/New_York"
+
+
+def test_fetch_user_timezone_marks_invalid_fitbit_timezone() -> None:
+    timezone_blob = _normalize_timezone_blob(
+        {
+            "__missing": False,
+            "reason": None,
+            "raw_status": 200,
+            "payload": {"user": {"timezone": "Mars/OlympusMons"}},
+        }
+    )
+    assert timezone_blob["__missing"] is True
+    assert timezone_blob["reason"] == "timezone_invalid"
+
+
+def test_fetch_user_timezone_maps_missing_signal_to_unavailable() -> None:
+    timezone_blob = _normalize_timezone_blob(
+        {
+            "__missing": True,
+            "reason": "rate_limited",
+            "raw_status": 429,
+            "payload": {},
+        }
+    )
+    assert timezone_blob["__missing"] is True
+    assert timezone_blob["reason"] == "timezone_unavailable"
+    assert timezone_blob["raw_status"] == 429
+
+
 def _test_settings(
     *,
     max_retries: int,
     backoff_base_seconds: float = 0.1,
     forbidden_cache_seconds: int = 3600,
+    timezone_cache_ttl_seconds: int = 604800,
 ) -> Settings:
     return Settings(
         FITBIT_MAX_RETRIES=max_retries,
         FITBIT_BACKOFF_BASE_SECONDS=backoff_base_seconds,
         FITBIT_FORBIDDEN_CACHE_SECONDS=forbidden_cache_seconds,
+        FITBIT_TIMEZONE_CACHE_TTL_SECONDS=timezone_cache_ttl_seconds,
         FITBIT_MIN_FETCH_INTERVAL_SECONDS=0.0,
         FITBIT_MAX_CONCURRENT_FETCHES=2,
     )

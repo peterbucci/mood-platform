@@ -184,6 +184,37 @@ The Python worker now mirrors the Node orchestration model:
 - Night-aligned signals use a configurable night anchor window.
 - `latest_exercise` is fetched per request anchor timestamp (not per date batch).
 
+### Timezone Resolution + Anchoring (US-022)
+
+Feature extraction now resolves timezone per request before any Fitbit/window fetches, then uses
+that single resolved timezone for:
+
+- anchor calculation (`local_date`, `night_anchor_date`)
+- Fitbit day/range fetch windows (`window_start`, `window_end`)
+- context-derived fields like day-of-week/weekend
+- persisted feature metadata (`source_timezone`)
+
+Resolution precedence:
+
+1. Fitbit profile timezone (`GET /1/user/-/profile.json`) when available and valid IANA.
+2. Client timezone from request `clientFeatures` (`source_timezone`, `timezone`, `tz`, `timeZone`)
+   when valid IANA.
+3. UTC fallback.
+
+Notes added when Fitbit timezone cannot be used:
+
+- `timezone_from_fitbit_unavailable`
+- `timezone_from_fitbit_invalid`
+- `timezone_fallback_to_client`
+- `timezone_fallback_to_utc`
+
+Timezone fetch call-volume controls:
+
+- Fitbit timezone is cached per user in-process with long TTL.
+- `FITBIT_TIMEZONE_CACHE_TTL_SECONDS` (default `604800`, 7 days).
+- Missing timezone responses are cached for a shorter window (up to 1 hour) to reduce thrash.
+- 403/429/timeout never fail fulfillment; timezone falls back and notes are added.
+
 Night anchor knobs:
 
 - `NIGHT_ANCHOR_START_HOUR` (default `18`)
@@ -232,6 +263,7 @@ Fitbit endpoints called:
 - Skin temp range: `GET /1/user/-/temp/skin/date/{start}/{end}.json`
 - Nutrition summary: `GET /1/user/-/foods/log/date/{date}.json`
 - Water logs: `GET /1/user/-/foods/log/water/date/{date}.json`
+- User profile (timezone source): `GET /1/user/-/profile.json`
 
 Non-Fitbit context endpoints called (when `clientFeatures.lat/lon` are provided):
 
@@ -262,6 +294,7 @@ Additional env vars used by this flow:
 - `FITBIT_BACKOFF_BASE_SECONDS` retry backoff base interval
 - `FITBIT_MAX_CONCURRENT_FETCHES` bounded signal fetch concurrency
 - `FITBIT_FORBIDDEN_CACHE_SECONDS` capability cache TTL for forbidden Fitbit signals
+- `FITBIT_TIMEZONE_CACHE_TTL_SECONDS` timezone cache TTL for Fitbit profile timezone resolution
 
 Feature payload notes:
 
@@ -278,6 +311,10 @@ Feature payload notes:
 - `missing_weather`
 - `missing_air_quality`
 - `missing_location_context`
+- `timezone_from_fitbit_unavailable`
+- `timezone_from_fitbit_invalid`
+- `timezone_fallback_to_client`
+- `timezone_fallback_to_utc`
 
 Behavior rules:
 
@@ -393,3 +430,19 @@ The `worker` service has a Docker healthcheck that probes:
    - `SELECT id, attempts, "nextAttemptAt", "lastErrorCode", "lastErrorSignal" FROM requests WHERE status='pending';`
 5. Confirm forbidden breathing still fulfills with note:
    - `python -m pytest apps/backend/tests/test_request_fulfillment_static_payload.py -q`
+
+### Local Verification (US-022 timezone precedence/caching)
+
+Run:
+
+- `python -m pytest apps/backend/tests/test_fitbit_anchoring.py -q`
+- `python -m pytest apps/backend/tests/test_fitbit_api_client.py -q`
+- `python -m pytest apps/backend/tests/test_fitbit_data_client.py -q`
+- `python -m pytest apps/backend/tests/test_request_fulfillment_static_payload.py -q`
+
+Expected:
+
+- Fitbit profile timezone overrides client timezone when valid.
+- Failed Fitbit profile timezone fetches fall back to client timezone (if valid) else UTC.
+- Fallback notes are present in feature payload `notes`.
+- Repeated timezone fetches for the same user reuse cache instead of re-calling Fitbit immediately.
