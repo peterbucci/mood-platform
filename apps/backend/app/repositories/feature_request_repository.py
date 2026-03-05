@@ -13,6 +13,7 @@ from app.db.models import Feature, FeatureRequest
 
 PENDING_STATUS = "pending"
 FULFILLED_STATUS = "fulfilled"
+CANCELED_STATUS = "canceled"
 PHONE_SOURCE = "phone"
 
 
@@ -27,6 +28,12 @@ class FeatureRequestFulfillmentError(Exception):
 class FeatureRequestRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
+
+    def commit(self) -> None:
+        self._session.commit()
+
+    def rollback(self) -> None:
+        self._session.rollback()
 
     def has_pending_requests_for_user(self, *, user_id: str) -> bool:
         pending_ready_filter = self._pending_ready_filter()
@@ -156,6 +163,51 @@ class FeatureRequestRepository:
             )
         )
         return result.scalar_one_or_none()
+
+    def get_request_by_id_for_user_for_update(
+        self,
+        *,
+        user_id: str,
+        request_id: str,
+    ) -> FeatureRequest | None:
+        result = self._session.execute(
+            sa.select(FeatureRequest)
+            .where(
+                FeatureRequest.id == request_id,
+                FeatureRequest.user_id == user_id,
+            )
+            .with_for_update()
+        )
+        return result.scalar_one_or_none()
+
+    def set_request_status(
+        self,
+        *,
+        request_id: str,
+        user_id: str,
+        new_status: str,
+        expected_current_status: str | None = None,
+        commit: bool = True,
+    ) -> bool:
+        update_stmt = (
+            sa.update(FeatureRequest)
+            .where(
+                FeatureRequest.id == request_id,
+                FeatureRequest.user_id == user_id,
+            )
+            .values(status=new_status)
+        )
+        if isinstance(expected_current_status, str):
+            update_stmt = update_stmt.where(FeatureRequest.status == expected_current_status)
+
+        try:
+            update_result = self._session.execute(update_stmt)
+            if commit:
+                self._session.commit()
+            return update_result.rowcount == 1
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise FeatureRequestWriteError("Failed to update feature request status.") from exc
 
     def count_pending_requests(self, *, user_id: str | None = None) -> int:
         query = (
