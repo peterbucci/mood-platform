@@ -19,6 +19,7 @@ class Settings:
     FITBIT_AUTH_BASE_URL: str = DEFAULT_FITBIT_AUTH_BASE_URL
     FITBIT_TOKEN_URL: str = DEFAULT_FITBIT_TOKEN_URL
     FITBIT_OAUTH_SCOPE: str = DEFAULT_FITBIT_OAUTH_SCOPE
+    FITBIT_WEBHOOK_SECRET: str = ""
 
     def fitbit_scope_query_value(self) -> str:
         return " ".join(self.FITBIT_OAUTH_SCOPE.split())
@@ -60,4 +61,5 @@ def get_settings() -> Settings:
             "FITBIT_OAUTH_SCOPE",
             DEFAULT_FITBIT_OAUTH_SCOPE,
         ).strip(),
+        FITBIT_WEBHOOK_SECRET=os.getenv("FITBIT_WEBHOOK_SECRET", "").strip(),
     )
