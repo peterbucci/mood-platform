@@ -27,6 +27,18 @@ class FeatureRequestRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
+    def has_pending_requests_for_user(self, *, user_id: str) -> bool:
+        pending_request = self._session.execute(
+            sa.select(FeatureRequest.id)
+            .where(
+                FeatureRequest.user_id == user_id,
+                FeatureRequest.status == PENDING_STATUS,
+                FeatureRequest.feature_id.is_(None),
+            )
+            .limit(1)
+        ).scalar_one_or_none()
+        return pending_request is not None
+
     def create_request(self, *, user_id: str) -> tuple[str, str]:
         request_id = str(uuid.uuid4())
         created_at = int(datetime.now(tz=UTC).timestamp())

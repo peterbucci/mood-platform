@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from collections import defaultdict
 from collections.abc import Iterable
@@ -11,17 +10,15 @@ from app.repositories.fitbit_token_repository import (
     FitbitTokenRepository,
     FitbitTokenRepositoryError,
 )
-from app.repositories.webhook_job_repository import WebhookJobRepository, WebhookJobRepositoryError
-from app.settings import Settings
-
-DEFAULT_WEBHOOK_JOB_TYPE = "fitbit_webhook_ingest"
+from app.services.webhook_coalescer import WebhookCoalescer
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class WebhookEnqueueResult:
-    enqueued_count: int
+    scheduled_count: int
+    extended_count: int
     skipped_count: int
 
 
@@ -30,12 +27,10 @@ class FitbitWebhookIngestionService:
         self,
         *,
         fitbit_token_repository: FitbitTokenRepository,
-        webhook_job_repository: WebhookJobRepository,
-        settings: Settings,
+        webhook_coalescer: WebhookCoalescer,
     ) -> None:
         self._fitbit_token_repository = fitbit_token_repository
-        self._webhook_job_repository = webhook_job_repository
-        self._settings = settings
+        self._webhook_coalescer = webhook_coalescer
 
     def enqueue_events(
         self,
@@ -46,10 +41,11 @@ class FitbitWebhookIngestionService:
         events_by_fitbit_user_id = self._group_events_by_fitbit_user_id(
             payload_events=payload_events
         )
-        enqueued_count = 0
+        scheduled_count = 0
+        extended_count = 0
         skipped_count = 0
 
-        for fitbit_user_id, grouped_events in events_by_fitbit_user_id.items():
+        for fitbit_user_id, _grouped_events in events_by_fitbit_user_id.items():
             try:
                 internal_user_id = self._fitbit_token_repository.get_user_id_by_fitbit_user_id(
                     fitbit_user_id=fitbit_user_id
@@ -66,24 +62,11 @@ class FitbitWebhookIngestionService:
                 skipped_count += 1
                 continue
 
-            try:
-                was_enqueued = self._webhook_job_repository.enqueue_job(
-                    user_id=internal_user_id,
-                    fitbit_user_id=fitbit_user_id,
-                    payload_json=json.dumps(grouped_events),
-                    job_type=DEFAULT_WEBHOOK_JOB_TYPE,
-                    coalesce_seconds=self._settings.FITBIT_WEBHOOK_COALESCE_SECONDS,
-                )
-            except WebhookJobRepositoryError:
-                logger.exception(
-                    "Failed to enqueue Fitbit webhook job.",
-                    extra={"request_id": request_id},
-                )
-                skipped_count += 1
-                continue
-
-            if was_enqueued:
-                enqueued_count += 1
+            schedule_outcome = self._webhook_coalescer.schedule(str(internal_user_id))
+            if schedule_outcome == "scheduled":
+                scheduled_count += 1
+            elif schedule_outcome == "extended":
+                extended_count += 1
             else:
                 skipped_count += 1
 
@@ -91,11 +74,16 @@ class FitbitWebhookIngestionService:
             "Fitbit webhook enqueue summary.",
             extra={
                 "request_id": request_id,
-                "enqueued_count": enqueued_count,
+                "scheduled_count": scheduled_count,
+                "extended_count": extended_count,
                 "skipped_count": skipped_count,
             },
         )
-        return WebhookEnqueueResult(enqueued_count=enqueued_count, skipped_count=skipped_count)
+        return WebhookEnqueueResult(
+            scheduled_count=scheduled_count,
+            extended_count=extended_count,
+            skipped_count=skipped_count,
+        )
 
     @staticmethod
     def _group_events_by_fitbit_user_id(

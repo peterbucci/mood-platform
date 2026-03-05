@@ -96,14 +96,15 @@ Webhook ingestion endpoint:
   - requires `FITBIT_WEBHOOK_SECRET`
   - rejects missing signature with `401`
   - rejects invalid signature with `403`
-  - acknowledges quickly with `204` and enqueues async `webhook_jobs` rows
-  - coalesces duplicate jobs per user within `FITBIT_WEBHOOK_COALESCE_SECONDS`
+  - acknowledges quickly with `204` and schedules async debounce processing by user
+  - coalesces duplicate events per user within `FITBIT_WEBHOOK_COALESCE_SECONDS`
+  - triggers fulfillment once per user after debounce when pending requests exist
 
 Local webhook ingestion test:
 
 1. Set env vars:
    - `FITBIT_WEBHOOK_SECRET`
-   - `FITBIT_WEBHOOK_COALESCE_SECONDS` (optional; default `30`)
+   - `FITBIT_WEBHOOK_COALESCE_SECONDS` (optional; default `10`)
 2. Generate test payload + signature (Python one-liner):
    ```bash
    python - <<'PY'
