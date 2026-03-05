@@ -256,6 +256,138 @@ def test_build_feature_payload_derives_intraday_metrics_when_available() -> None
     assert "missing_intraday_heart" not in payload["notes"]
 
 
+def test_build_feature_payload_derives_intraday_azm_from_minutes_shape() -> None:
+    payload = build_feature_payload(
+        raw_fitbit_data={
+            "azm_intraday": _present_blob(
+                {
+                    "activities-active-zone-minutes-intraday": [
+                        {
+                            "dateTime": "2026-03-05",
+                            "minutes": [
+                                {
+                                    "minute": "2026-03-05T12:00:00",
+                                    "value": {
+                                        "activeZoneMinutes": 0,
+                                        "fatBurnActiveZoneMinutes": 0,
+                                        "cardioActiveZoneMinutes": 0,
+                                        "peakActiveZoneMinutes": 0,
+                                    },
+                                },
+                                {
+                                    "minute": "2026-03-05T12:01:00",
+                                    "value": {
+                                        "activeZoneMinutes": 2,
+                                        "fatBurnActiveZoneMinutes": 1,
+                                        "cardioActiveZoneMinutes": 1,
+                                        "peakActiveZoneMinutes": 0,
+                                    },
+                                },
+                            ],
+                        }
+                    ]
+                }
+            )
+        },
+        anchor_datetime=datetime(2026, 3, 5, 12, 5, tzinfo=UTC),
+    )
+
+    derived = payload["derived"]
+    assert derived["azmLast30m"] == 2.0
+    assert derived["azmFatBurnMinutes"] == 1.0
+    assert derived["azmCardioMinutes"] == 1.0
+    assert "missing_intraday_azm" not in payload["notes"]
+
+
+def test_build_feature_payload_uses_breathing_all_and_spo2_range() -> None:
+    payload = build_feature_payload(
+        raw_fitbit_data={
+            "breathing_rate": _present_blob({"br": [{"value": {"breathingRate": 10.2}}]}),
+            "breathing_rate_all": _present_blob(
+                {
+                    "br": [
+                        {
+                            "value": {
+                                "deepSleepSummary": {"breathingRate": 10.9},
+                                "remSleepSummary": {"breathingRate": 11.3},
+                                "lightSleepSummary": {"breathingRate": 9.8},
+                            }
+                        }
+                    ]
+                }
+            ),
+            "breathing_rate_range": _present_blob(
+                {
+                    "br": [
+                        {"value": {"breathingRate": 10.1}},
+                        {"value": {"breathingRate": 10.4}},
+                    ]
+                }
+            ),
+            "spo2": _present_blob({"spo2": [{"value": {"avg": 96.7, "min": 93.5, "max": 99.8}}]}),
+            "spo2_range": _present_blob(
+                {
+                    "spo2": [
+                        {"value": {"avg": 96.0}},
+                        {"value": {"avg": 97.0}},
+                        {"value": {"avg": 98.0}},
+                    ]
+                }
+            ),
+        }
+    )
+
+    derived = payload["derived"]
+    assert derived["brFullNight"] == 10.2
+    assert derived["brDeepSleep"] == 10.9
+    assert derived["brRemSleep"] == 11.3
+    assert derived["brLightSleep"] == 9.8
+    assert derived["spo2Avg"] == 96.7
+    assert derived["spo2Avg7dAvg"] == 97.0
+    assert round(derived["spo2AvgDeviationFrom7d"], 1) == -0.3
+
+
+def test_build_feature_payload_extracts_latest_exercise_azm_from_zone_minutes() -> None:
+    payload = build_feature_payload(
+        raw_fitbit_data={
+            "latest_exercise": _present_blob(
+                {
+                    "activities": [
+                        {
+                            "activityName": "Run",
+                            "startTime": "2026-03-05T11:30:00-05:00",
+                            "duration": 1800000,
+                            "steps": 3500,
+                            "calories": 320,
+                            "averageHeartRate": 141,
+                            "activeZoneMinutes": {
+                                "totalMinutes": 14,
+                                "minutesInHeartRateZones": [
+                                    {"type": "FAT_BURN", "minutes": 8},
+                                    {"type": "CARDIO", "minutes": 4},
+                                    {"type": "PEAK", "minutes": 2},
+                                ],
+                            },
+                        }
+                    ]
+                }
+            )
+        },
+        anchor_datetime=datetime(2026, 3, 5, 12, 0, tzinfo=UTC),
+    )
+
+    derived = payload["derived"]
+    assert derived["lastExerciseType"] == "Run"
+    assert derived["lastExerciseDurationMinutes"] == 30.0
+    assert derived["lastExerciseSteps"] == 3500.0
+    assert derived["lastExerciseCalories"] == 320.0
+    assert derived["lastExerciseAvgHr"] == 141.0
+    assert derived["lastExerciseAzmTotal"] == 14.0
+    assert derived["lastExerciseAzmFatBurn"] == 8.0
+    assert derived["lastExerciseAzmCardio"] == 4.0
+    assert derived["lastExerciseAzmPeak"] == 2.0
+
+
 def _missing_blob(reason: str) -> dict[str, object]:
     return {
         "__missing": True,

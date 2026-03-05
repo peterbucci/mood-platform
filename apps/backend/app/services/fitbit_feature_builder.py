@@ -663,7 +663,7 @@ def build_derived_features(
         derived["spo2Avg7dAvg"] = statistics.mean(spo2_range_values)
         if derived["spo2Avg"] is not None:
             derived["spo2AvgDeviationFrom7d"] = derived["spo2Avg"] - derived["spo2Avg7dAvg"]
-    else:
+    elif _blob_reason(spo2_range_blob) != "disabled_intraday":
         _add_note(notes, "missing_spo2_range")
 
     temp_metrics = features_from_temp(blob=temp_blob, notes=notes)
@@ -1360,18 +1360,8 @@ def _extract_azm_series(
     blob: dict[str, Any] | None,
 ) -> tuple[list[float], list[float], list[float], list[float]]:
     payload = _blob_payload(blob)
-    candidate_keys = (
-        "activities-active-zone-minutes-intraday",
-        "activities-active-zone-minutes",
-        "activities-azm-intraday",
-    )
-    dataset: list[Any] | None = None
-    for key in candidate_keys:
-        parent = payload.get(key)
-        if isinstance(parent, Mapping) and isinstance(parent.get("dataset"), list):
-            dataset = parent.get("dataset")
-            break
-    if dataset is None:
+    dataset = _extract_azm_dataset(payload=payload)
+    if not dataset:
         return [], [], [], []
 
     total: list[float] = []
@@ -1382,24 +1372,49 @@ def _extract_azm_series(
         if not isinstance(point, Mapping):
             continue
         value = point.get("value")
-        if isinstance(value, Mapping):
-            total_value = _to_float(
-                value.get("activeZoneMinutes") or value.get("value") or value.get("minutes")
-            )
-            fat_value = _to_float(value.get("fatBurnActiveZoneMinutes") or value.get("fatBurn"))
-            cardio_value = _to_float(value.get("cardioActiveZoneMinutes") or value.get("cardio"))
-            peak_value = _to_float(value.get("peakActiveZoneMinutes") or value.get("peak"))
-        else:
-            total_value = _to_float(value)
-            fat_value = None
-            cardio_value = None
-            peak_value = None
+        normalized_value = value if isinstance(value, Mapping) else point
+        total_value = _to_float(
+            normalized_value.get("activeZoneMinutes")
+            or normalized_value.get("value")
+            or normalized_value.get("minutes")
+        )
+        fat_value = _to_float(
+            normalized_value.get("fatBurnActiveZoneMinutes") or normalized_value.get("fatBurn")
+        )
+        cardio_value = _to_float(
+            normalized_value.get("cardioActiveZoneMinutes") or normalized_value.get("cardio")
+        )
+        peak_value = _to_float(
+            normalized_value.get("peakActiveZoneMinutes") or normalized_value.get("peak")
+        )
 
         total.append(total_value or 0.0)
         fat.append(fat_value or 0.0)
         cardio.append(cardio_value or 0.0)
         peak.append(peak_value or 0.0)
     return total, fat, cardio, peak
+
+
+def _extract_azm_dataset(*, payload: dict[str, Any]) -> list[Any]:
+    candidate_keys = (
+        "activities-active-zone-minutes-intraday",
+        "activities-active-zone-minutes",
+        "activities-azm-intraday",
+    )
+    for key in candidate_keys:
+        parent = payload.get(key)
+        if isinstance(parent, Mapping):
+            dataset = parent.get("dataset")
+            if isinstance(dataset, list):
+                return dataset
+        if isinstance(parent, list):
+            for entry in parent:
+                if not isinstance(entry, Mapping):
+                    continue
+                minutes = entry.get("minutes")
+                if isinstance(minutes, list):
+                    return minutes
+    return []
 
 
 def _extract_resting_heart_rate_series(*, heart_7d_blob: dict[str, Any] | None) -> list[float]:
@@ -1540,7 +1555,12 @@ def _extract_breathing_metrics(
     output["brRemSleep"] = _to_float(_get_nested(value, "remSleepSummary", "breathingRate"))
     output["brLightSleep"] = _to_float(_get_nested(value, "lightSleepSummary", "breathingRate"))
 
-    if output["brFullNight"] is None:
+    if (
+        output["brFullNight"] is None
+        or output["brDeepSleep"] is None
+        or output["brRemSleep"] is None
+        or output["brLightSleep"] is None
+    ):
         all_payload = _blob_payload(all_blob)
         all_value = _extract_first_nested_dict(
             payload=all_payload,
@@ -1548,9 +1568,22 @@ def _extract_breathing_metrics(
             value_key="value",
         )
         if all_value:
-            output["brFullNight"] = _to_float(
-                all_value.get("breathingRate") or all_value.get("sleepingBreathingRate")
-            )
+            if output["brFullNight"] is None:
+                output["brFullNight"] = _to_float(
+                    all_value.get("breathingRate") or all_value.get("sleepingBreathingRate")
+                )
+            if output["brDeepSleep"] is None:
+                output["brDeepSleep"] = _to_float(
+                    _get_nested(all_value, "deepSleepSummary", "breathingRate")
+                )
+            if output["brRemSleep"] is None:
+                output["brRemSleep"] = _to_float(
+                    _get_nested(all_value, "remSleepSummary", "breathingRate")
+                )
+            if output["brLightSleep"] is None:
+                output["brLightSleep"] = _to_float(
+                    _get_nested(all_value, "lightSleepSummary", "breathingRate")
+                )
     return output
 
 
@@ -1647,13 +1680,46 @@ def _extract_latest_exercise_metrics(
         output["lastExerciseDurationMinutes"] = duration_ms / 60000.0
     output["lastExerciseSteps"] = _to_float(latest.get("steps"))
     output["lastExerciseCalories"] = _to_float(latest.get("calories"))
+    output["lastExerciseAvgHr"] = _to_float(
+        latest.get("averageHeartRate") or latest.get("averageHR")
+    )
 
     active_zone = latest.get("activeZoneMinutes")
     if isinstance(active_zone, Mapping):
-        output["lastExerciseAzmTotal"] = _to_float(active_zone.get("total"))
+        output["lastExerciseAzmTotal"] = _to_float(
+            active_zone.get("totalMinutes") or active_zone.get("total")
+        )
         output["lastExerciseAzmFatBurn"] = _to_float(active_zone.get("fatBurn"))
         output["lastExerciseAzmCardio"] = _to_float(active_zone.get("cardio"))
         output["lastExerciseAzmPeak"] = _to_float(active_zone.get("peak"))
+
+        zone_minutes = active_zone.get("minutesInHeartRateZones")
+        if isinstance(zone_minutes, list):
+            for zone in zone_minutes:
+                if not isinstance(zone, Mapping):
+                    continue
+                zone_name = str(
+                    zone.get("type") or zone.get("name") or zone.get("zone") or ""
+                ).strip()
+                minutes = _to_float(zone.get("minutes"))
+                if minutes is None:
+                    continue
+                normalized_name = zone_name.lower().replace("_", " ").replace("-", " ")
+                if "fat" in normalized_name and "burn" in normalized_name:
+                    output["lastExerciseAzmFatBurn"] = minutes
+                elif "cardio" in normalized_name:
+                    output["lastExerciseAzmCardio"] = minutes
+                elif "peak" in normalized_name:
+                    output["lastExerciseAzmPeak"] = minutes
+
+            if output["lastExerciseAzmTotal"] is None:
+                output["lastExerciseAzmTotal"] = _sum_non_null(
+                    [
+                        output["lastExerciseAzmFatBurn"],
+                        output["lastExerciseAzmCardio"],
+                        output["lastExerciseAzmPeak"],
+                    ]
+                )
 
     heart_rate_zones = latest.get("heartRateZones")
     if isinstance(heart_rate_zones, list):
@@ -1672,7 +1738,7 @@ def _extract_latest_exercise_metrics(
             avg_zone = (max_hr + min_hr) / 2.0
             weighted_sum += avg_zone * minutes
             weighted_minutes += minutes
-        if weighted_minutes > 0:
+        if weighted_minutes > 0 and output["lastExerciseAvgHr"] is None:
             output["lastExerciseAvgHr"] = weighted_sum / weighted_minutes
 
     parsed_start = _parse_datetime(latest.get("startTime"))
