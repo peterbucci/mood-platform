@@ -193,8 +193,11 @@ Night anchor knobs:
 Rate-limit/backoff policy:
 
 - Per-user minimum request interval: `FITBIT_MIN_FETCH_INTERVAL_SECONDS` (default `0.2`).
-- Fitbit calls are fail-fast on `429` (no per-call retry loop).
-- Failed requests persist retry state in `requests` (`attempts`, `nextAttemptAt`, `lastErrorCode`, `lastErrorSignal`) so the worker does not immediately retry the same request in the next loop.
+- Bounded parallel Fitbit fetches per user/date batch: `FITBIT_MAX_CONCURRENT_FETCHES` (default `3`).
+- Per-signal retry loop: `FITBIT_MAX_RETRIES` (default `2`) with exponential backoff + jitter using `FITBIT_BACKOFF_BASE_SECONDS` (default `0.5`).
+- `429` respects `Retry-After` when provided; after retries, the signal is marked missing (`rate_limited`) and fulfillment continues.
+- Capability cache for forbidden signals: `FITBIT_FORBIDDEN_CACHE_SECONDS` (default `3600`) reduces repeated 403 thrash per `(user, signal)`.
+- Failed requests still persist retry state in `requests` (`attempts`, `nextAttemptAt`, `lastErrorCode`, `lastErrorSignal`) so the worker does not immediately retry the same request in the next loop when a request-level failure occurs.
 
 403 semantics:
 
@@ -255,6 +258,10 @@ Additional env vars used by this flow:
 
 - `FITBIT_SUBSCRIBER_ID` for subscription registration header `X-Fitbit-Subscriber-Id`
 - `WEATHER_CACHE_TTL_SECONDS` for weather/air-quality cache TTL (Redis-backed if `REDIS_URL` exists, else in-memory)
+- `FITBIT_MAX_RETRIES` per-signal retries on timeout/429/5xx
+- `FITBIT_BACKOFF_BASE_SECONDS` retry backoff base interval
+- `FITBIT_MAX_CONCURRENT_FETCHES` bounded signal fetch concurrency
+- `FITBIT_FORBIDDEN_CACHE_SECONDS` capability cache TTL for forbidden Fitbit signals
 
 Feature payload notes:
 
@@ -270,6 +277,7 @@ Feature payload notes:
 - `missing_intraday_heart`
 - `missing_weather`
 - `missing_air_quality`
+- `missing_location_context`
 
 Behavior rules:
 
@@ -277,7 +285,12 @@ Behavior rules:
 - Derived fields for missing signals are emitted as `null`.
 - `401` is treated as auth failure for the pull and retries via token refresh.
 - `403`/`404`/`5xx`/malformed JSON become per-signal missing markers.
-- `429` is treated as fail-fast for the current pull and schedules request-level retry using `nextAttemptAt`.
+- `429` is retried per signal and then converted to per-signal missing markers when retries are exhausted.
+
+Feature module layout:
+
+- Feature math is split under `app/services/features/` (composites, context enrichment, field registry, heart helpers).
+- `fitbit_feature_builder.py` remains the orchestrator that composes module outputs into the stable payload contract.
 
 ## Fulfillment Worker
 

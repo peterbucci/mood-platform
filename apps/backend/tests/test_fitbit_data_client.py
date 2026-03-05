@@ -6,11 +6,11 @@ import httpx
 import pytest
 from app.services.fitbit_data_client import (
     FitbitAuthorizationError,
-    FitbitRateLimitError,
     FitbitSignalPullClient,
     StaticFitbitPayloadClient,
     build_fitbit_client,
 )
+from app.settings import Settings
 
 
 class _UnusedSessionFactory:
@@ -27,7 +27,10 @@ class _StubTokenService:
 
 
 def test_fetch_signal_returns_missing_for_not_found_rate_limit_and_5xx() -> None:
-    client = FitbitSignalPullClient(session_factory=_UnusedSessionFactory())  # type: ignore[arg-type]
+    client = FitbitSignalPullClient(  # type: ignore[arg-type]
+        session_factory=_UnusedSessionFactory(),
+        settings=_test_settings(max_retries=0),
+    )
 
     not_found = client._fetch_signal(  # noqa: SLF001
         signal_name="spo2",
@@ -38,11 +41,13 @@ def test_fetch_signal_returns_missing_for_not_found_rate_limit_and_5xx() -> None
     assert not_found["raw_status"] == 404
     assert isinstance(not_found["payload"], dict)
 
-    with pytest.raises(FitbitRateLimitError):
-        client._fetch_signal(  # noqa: SLF001
-            signal_name="spo2",
-            fetch_fn=lambda: httpx.Response(429, json={"errors": []}),
-        )
+    rate_limited = client._fetch_signal(  # noqa: SLF001
+        signal_name="spo2",
+        fetch_fn=lambda: httpx.Response(429, json={"errors": []}),
+    )
+    assert rate_limited["__missing"] is True
+    assert rate_limited["reason"] == "rate_limited"
+    assert rate_limited["raw_status"] == 429
 
     upstream_error = client._fetch_signal(  # noqa: SLF001
         signal_name="spo2",
@@ -55,7 +60,10 @@ def test_fetch_signal_returns_missing_for_not_found_rate_limit_and_5xx() -> None
 
 
 def test_fetch_signal_raises_on_auth_errors() -> None:
-    client = FitbitSignalPullClient(session_factory=_UnusedSessionFactory())  # type: ignore[arg-type]
+    client = FitbitSignalPullClient(  # type: ignore[arg-type]
+        session_factory=_UnusedSessionFactory(),
+        settings=_test_settings(max_retries=0),
+    )
     with pytest.raises(FitbitAuthorizationError):
         client._fetch_signal(  # noqa: SLF001
             signal_name="sleep",
@@ -64,7 +72,10 @@ def test_fetch_signal_raises_on_auth_errors() -> None:
 
 
 def test_fetch_signal_marks_reauth_on_scope_forbidden() -> None:
-    client = FitbitSignalPullClient(session_factory=_UnusedSessionFactory())  # type: ignore[arg-type]
+    client = FitbitSignalPullClient(  # type: ignore[arg-type]
+        session_factory=_UnusedSessionFactory(),
+        settings=_test_settings(max_retries=0, forbidden_cache_seconds=1),
+    )
     token_service = _StubTokenService()
     user_id = uuid.UUID("00000000-0000-0000-0000-00000000cd01")
 
@@ -84,7 +95,10 @@ def test_fetch_signal_marks_reauth_on_scope_forbidden() -> None:
 
 
 def test_fetch_signal_returns_present_wrapper_for_valid_json() -> None:
-    client = FitbitSignalPullClient(session_factory=_UnusedSessionFactory())  # type: ignore[arg-type]
+    client = FitbitSignalPullClient(  # type: ignore[arg-type]
+        session_factory=_UnusedSessionFactory(),
+        settings=_test_settings(max_retries=0),
+    )
     wrapped = client._fetch_signal(  # noqa: SLF001
         signal_name="hrv",
         fetch_fn=lambda: httpx.Response(200, json={"hrv": [{"value": {"dailyRmssd": 31.2}}]}),
@@ -95,8 +109,12 @@ def test_fetch_signal_returns_present_wrapper_for_valid_json() -> None:
     assert wrapped["payload"]["hrv"][0]["value"]["dailyRmssd"] == 31.2
 
 
-def test_fetch_signal_retries_once_after_read_timeout() -> None:
-    client = FitbitSignalPullClient(session_factory=_UnusedSessionFactory())  # type: ignore[arg-type]
+def test_fetch_signal_retries_after_read_timeout_and_succeeds(monkeypatch) -> None:
+    monkeypatch.setattr("app.services.fitbit_data_client.time.sleep", lambda _: None)
+    client = FitbitSignalPullClient(  # type: ignore[arg-type]
+        session_factory=_UnusedSessionFactory(),
+        settings=_test_settings(max_retries=1, backoff_base_seconds=0.01),
+    )
     attempts = 0
 
     def _fetch_fn() -> httpx.Response:
@@ -121,8 +139,70 @@ def test_fetch_signal_retries_once_after_read_timeout() -> None:
     assert wrapped["raw_status"] == 200
 
 
+def test_fetch_signal_retries_429_with_retry_after(monkeypatch) -> None:
+    slept_for: list[float] = []
+    monkeypatch.setattr("app.services.fitbit_data_client.time.sleep", slept_for.append)
+    client = FitbitSignalPullClient(  # type: ignore[arg-type]
+        session_factory=_UnusedSessionFactory(),
+        settings=_test_settings(max_retries=1, backoff_base_seconds=0.01),
+    )
+    attempts = 0
+
+    def _fetch_fn() -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(429, headers={"Retry-After": "2"})
+        return httpx.Response(200, json={"ok": True})
+
+    wrapped = client._fetch_signal(  # noqa: SLF001
+        signal_name="steps_intraday",
+        fetch_fn=_fetch_fn,
+    )
+
+    assert attempts == 2
+    assert wrapped["__missing"] is False
+    assert slept_for == [2.0]
+
+
+def test_fetch_signal_uses_forbidden_capability_cache() -> None:
+    client = FitbitSignalPullClient(  # type: ignore[arg-type]
+        session_factory=_UnusedSessionFactory(),
+        settings=_test_settings(max_retries=0, forbidden_cache_seconds=3600),
+    )
+    user_id = uuid.UUID("00000000-0000-0000-0000-00000000cd02")
+    first = client._fetch_signal(  # noqa: SLF001
+        signal_name="spo2",
+        fetch_fn=lambda: httpx.Response(403, json={"errors": []}),
+        user_id=user_id,
+    )
+    second = client._fetch_signal(  # noqa: SLF001
+        signal_name="spo2",
+        fetch_fn=lambda: pytest.fail("fetch_fn should not be called due to forbidden cache"),
+        user_id=user_id,
+    )
+
+    assert first["reason"] == "forbidden"
+    assert second["reason"] == "forbidden_cached"
+
+
 def test_build_fitbit_client_prefers_static_payload_when_configured(monkeypatch) -> None:
     monkeypatch.setenv("FITBIT_STATIC_PAYLOAD", '{"steps":{"count":1234}}')
     client = build_fitbit_client(session_factory=_UnusedSessionFactory())  # type: ignore[arg-type]
     assert isinstance(client, StaticFitbitPayloadClient)
     assert client.fetch_user_data(user_id="user-1") == {"steps": {"count": 1234}}
+
+
+def _test_settings(
+    *,
+    max_retries: int,
+    backoff_base_seconds: float = 0.1,
+    forbidden_cache_seconds: int = 3600,
+) -> Settings:
+    return Settings(
+        FITBIT_MAX_RETRIES=max_retries,
+        FITBIT_BACKOFF_BASE_SECONDS=backoff_base_seconds,
+        FITBIT_FORBIDDEN_CACHE_SECONDS=forbidden_cache_seconds,
+        FITBIT_MIN_FETCH_INTERVAL_SECONDS=0.0,
+        FITBIT_MAX_CONCURRENT_FETCHES=2,
+    )

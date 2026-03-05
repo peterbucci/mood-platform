@@ -14,6 +14,10 @@ DEFAULT_NIGHT_ANCHOR_START_HOUR = 18
 DEFAULT_NIGHT_ANCHOR_END_HOUR = 12
 DEFAULT_FITBIT_MIN_FETCH_INTERVAL_SECONDS = 0.2
 DEFAULT_FITBIT_DEFAULT_TIMEZONE = "UTC"
+DEFAULT_FITBIT_MAX_RETRIES = 2
+DEFAULT_FITBIT_BACKOFF_BASE_SECONDS = 0.5
+DEFAULT_FITBIT_MAX_CONCURRENT_FETCHES = 3
+DEFAULT_FITBIT_FORBIDDEN_CACHE_SECONDS = 3600
 
 
 @dataclass(frozen=True)
@@ -33,6 +37,10 @@ class Settings:
     NIGHT_ANCHOR_END_HOUR: int = DEFAULT_NIGHT_ANCHOR_END_HOUR
     FITBIT_MIN_FETCH_INTERVAL_SECONDS: float = DEFAULT_FITBIT_MIN_FETCH_INTERVAL_SECONDS
     FITBIT_DEFAULT_TIMEZONE: str = DEFAULT_FITBIT_DEFAULT_TIMEZONE
+    FITBIT_MAX_RETRIES: int = DEFAULT_FITBIT_MAX_RETRIES
+    FITBIT_BACKOFF_BASE_SECONDS: float = DEFAULT_FITBIT_BACKOFF_BASE_SECONDS
+    FITBIT_MAX_CONCURRENT_FETCHES: int = DEFAULT_FITBIT_MAX_CONCURRENT_FETCHES
+    FITBIT_FORBIDDEN_CACHE_SECONDS: int = DEFAULT_FITBIT_FORBIDDEN_CACHE_SECONDS
 
     def fitbit_scope_query_value(self) -> str:
         return " ".join(self.FITBIT_OAUTH_SCOPE.split())
@@ -102,6 +110,42 @@ def get_settings() -> Settings:
     except ValueError:
         fitbit_min_fetch_interval_seconds = DEFAULT_FITBIT_MIN_FETCH_INTERVAL_SECONDS
 
+    configured_fitbit_max_retries = os.getenv(
+        "FITBIT_MAX_RETRIES",
+        str(DEFAULT_FITBIT_MAX_RETRIES),
+    ).strip()
+    try:
+        fitbit_max_retries = int(configured_fitbit_max_retries)
+    except ValueError:
+        fitbit_max_retries = DEFAULT_FITBIT_MAX_RETRIES
+
+    configured_fitbit_backoff_base_seconds = os.getenv(
+        "FITBIT_BACKOFF_BASE_SECONDS",
+        str(DEFAULT_FITBIT_BACKOFF_BASE_SECONDS),
+    ).strip()
+    try:
+        fitbit_backoff_base_seconds = float(configured_fitbit_backoff_base_seconds)
+    except ValueError:
+        fitbit_backoff_base_seconds = DEFAULT_FITBIT_BACKOFF_BASE_SECONDS
+
+    configured_fitbit_max_concurrent_fetches = os.getenv(
+        "FITBIT_MAX_CONCURRENT_FETCHES",
+        str(DEFAULT_FITBIT_MAX_CONCURRENT_FETCHES),
+    ).strip()
+    try:
+        fitbit_max_concurrent_fetches = int(configured_fitbit_max_concurrent_fetches)
+    except ValueError:
+        fitbit_max_concurrent_fetches = DEFAULT_FITBIT_MAX_CONCURRENT_FETCHES
+
+    configured_fitbit_forbidden_cache_seconds = os.getenv(
+        "FITBIT_FORBIDDEN_CACHE_SECONDS",
+        str(DEFAULT_FITBIT_FORBIDDEN_CACHE_SECONDS),
+    ).strip()
+    try:
+        fitbit_forbidden_cache_seconds = int(configured_fitbit_forbidden_cache_seconds)
+    except ValueError:
+        fitbit_forbidden_cache_seconds = DEFAULT_FITBIT_FORBIDDEN_CACHE_SECONDS
+
     return Settings(
         FEATURE_EXTRACTOR_VERSION=configured_version,
         FITBIT_CLIENT_ID=os.getenv("FITBIT_CLIENT_ID", "").strip(),
@@ -131,4 +175,8 @@ def get_settings() -> Settings:
             DEFAULT_FITBIT_DEFAULT_TIMEZONE,
         ).strip()
         or DEFAULT_FITBIT_DEFAULT_TIMEZONE,
+        FITBIT_MAX_RETRIES=max(0, fitbit_max_retries),
+        FITBIT_BACKOFF_BASE_SECONDS=max(0.05, fitbit_backoff_base_seconds),
+        FITBIT_MAX_CONCURRENT_FETCHES=max(1, fitbit_max_concurrent_fetches),
+        FITBIT_FORBIDDEN_CACHE_SECONDS=max(60, fitbit_forbidden_cache_seconds),
     )
