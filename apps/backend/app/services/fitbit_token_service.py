@@ -65,6 +65,42 @@ class FitbitTokenService:
             token = self.refresh_token(user_id=user_id)
         return token.access_token
 
+    def store_token(
+        self,
+        *,
+        user_id: uuid.UUID,
+        fitbit_user_id: str | None,
+        access_token: str,
+        refresh_token: str,
+        expires_in: int,
+        scope: str,
+    ) -> datetime:
+        expires_at = datetime.now(tz=UTC) + timedelta(seconds=expires_in)
+        try:
+            self._repository.upsert_token(
+                user_id=user_id,
+                fitbit_user_id=fitbit_user_id,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                scope=scope,
+                expires_at=expires_at,
+            )
+        except FitbitTokenRepositoryError as exc:
+            raise FitbitTokenRefreshError("Failed to store Fitbit token.") from exc
+        return expires_at
+
+    def get_stored_token(self, *, user_id: uuid.UUID) -> object | None:
+        try:
+            return self._repository.get_token(user_id=user_id)
+        except FitbitTokenRepositoryError as exc:
+            raise FitbitTokenRefreshError("Failed to load Fitbit token.") from exc
+
+    def delete_stored_token(self, *, user_id: uuid.UUID) -> bool:
+        try:
+            return self._repository.delete_token(user_id=user_id)
+        except FitbitTokenRepositoryError as exc:
+            raise FitbitTokenRefreshError("Failed to delete Fitbit token.") from exc
+
     def refresh_token(self, *, user_id: uuid.UUID) -> object:
         self._assert_oauth_configured()
 

@@ -96,7 +96,7 @@ def test_fitbit_oauth_callback_exchanges_code_and_persists_tokens(monkeypatch) -
                 cursor.execute(
                     """
                     SELECT fitbit_user_id, access_token, refresh_token, scope
-                    FROM fitbit_oauth_connections
+                    FROM fitbit_tokens
                     WHERE user_id = %s
                     """,
                     (OWNER_USER_ID,),
@@ -189,7 +189,7 @@ def test_fitbit_oauth_unlink_clears_connection(monkeypatch) -> None:
                 cursor.execute(
                     """
                     SELECT user_id
-                    FROM fitbit_oauth_connections
+                    FROM fitbit_tokens
                     WHERE user_id = %s
                     """,
                     (OWNER_USER_ID,),
