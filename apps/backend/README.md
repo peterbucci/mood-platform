@@ -74,6 +74,17 @@ Each request persists a row in `requests` with:
 - `status = "pending"`
 - `source = "phone"`
 
+Feature read/delete endpoints:
+
+- `GET /features/latest`
+- `GET /features/{id}`
+- `GET /features`
+- `DELETE /features/{id}`
+  - deletes the feature for the current user
+  - deletes associated `labels`
+  - sets `requests.featureId = NULL` for requests referencing that feature
+  - keeps request rows and request status unchanged
+
 Request status/cancel endpoints:
 
 - `GET /requests/{id}`
