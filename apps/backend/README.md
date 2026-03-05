@@ -83,6 +83,12 @@ The backend supports Fitbit OAuth connect/disconnect endpoints:
 - `GET /fitbit/oauth/status`
 - `POST /fitbit/oauth/unlink`
 
+Webhook verification endpoint:
+
+- `GET /fitbit/webhook?verify=<challenge>`
+  - returns HTTP 200 with plain-text body equal to `<challenge>`
+  - returns HTTP 400 with `Missing verification challenge` when `verify` is missing
+
 Required environment variables:
 
 - `FITBIT_CLIENT_ID`
