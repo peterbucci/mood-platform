@@ -21,6 +21,8 @@ services:
   api:
     build:
       context: ./apps/backend
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql://mood:mood@postgres:5432/mood
       REDIS_URL: redis://redis:6379/0
@@ -36,6 +38,8 @@ services:
     build:
       context: ./apps/backend
     command: ["python", "-m", "app.worker"]
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql://mood:mood@postgres:5432/mood
       REDIS_URL: redis://redis:6379/0
