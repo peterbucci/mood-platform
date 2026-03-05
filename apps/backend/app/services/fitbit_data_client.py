@@ -346,10 +346,26 @@ class FitbitSignalPullClient:
         token_service: FitbitTokenService | None = None,
         user_id: uuid.UUID | None = None,
     ) -> dict[str, Any]:
-        try:
-            response = fetch_fn()
-        except httpx.RequestError:
-            logger.exception("Fitbit request failed for signal %s.", signal_name)
+        response: httpx.Response | None = None
+        for attempt in range(2):
+            try:
+                response = fetch_fn()
+                break
+            except httpx.ReadTimeout:
+                if attempt == 0:
+                    logger.warning(
+                        "Retrying Fitbit signal %s after read timeout (attempt %s).",
+                        signal_name,
+                        attempt + 2,
+                    )
+                    continue
+                logger.exception("Fitbit request timed out for signal %s.", signal_name)
+                return _missing_signal(reason="request_error")
+            except httpx.RequestError:
+                logger.exception("Fitbit request failed for signal %s.", signal_name)
+                return _missing_signal(reason="request_error")
+
+        if response is None:
             return _missing_signal(reason="request_error")
 
         status_code = response.status_code

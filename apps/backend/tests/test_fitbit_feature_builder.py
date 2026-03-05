@@ -34,6 +34,19 @@ def test_features_from_hrv_partial_adds_partial_note() -> None:
     assert notes == ["partial_hrv"]
 
 
+def test_features_from_hrv_missing_coverage_only_does_not_add_partial_note() -> None:
+    notes: list[str] = []
+    features = features_from_hrv(
+        blob=_present_blob({"hrv": [{"value": {"dailyRmssd": 32.4, "deepRmssd": 21.9}}]}),
+        notes=notes,
+    )
+
+    assert features["daily_rmssd"] == 32.4
+    assert features["deep_rmssd"] == 21.9
+    assert features["coverage"] is None
+    assert notes == []
+
+
 def test_features_from_breathing_rate_missing_or_partial_add_notes() -> None:
     missing_notes: list[str] = []
     missing_features = features_from_breathing_rate(
@@ -256,6 +269,170 @@ def test_build_feature_payload_derives_intraday_metrics_when_available() -> None
     assert "missing_intraday_heart" not in payload["notes"]
 
 
+def test_build_feature_payload_populates_top_level_heart_rate_from_intraday_series() -> None:
+    payload = build_feature_payload(
+        raw_fitbit_data={
+            "heart_intraday": _present_blob(
+                {
+                    "activities-heart-intraday": {
+                        "dataset": [
+                            {"time": "12:00:00", "value": 70},
+                            {"time": "12:01:00", "value": None},
+                            {"time": "12:02:00", "value": "bad"},
+                            {"time": "12:03:00", "value": 90},
+                            {"time": "12:04:00", "value": 80},
+                        ]
+                    }
+                }
+            )
+        },
+        anchor_datetime=datetime(2026, 3, 5, 12, 5, tzinfo=UTC),
+    )
+
+    assert payload["heart_rate"] == {"avg_bpm": 80.0, "min_bpm": 70.0, "max_bpm": 90.0}
+
+
+def test_build_feature_payload_keeps_top_level_heart_rate_null_without_intraday_series() -> None:
+    payload = build_feature_payload(
+        raw_fitbit_data={
+            "heart": _present_blob(
+                {
+                    "activities-heart": [
+                        {"dateTime": "2026-03-01", "value": {"restingHeartRate": 58}},
+                        {"dateTime": "2026-03-02", "value": {"restingHeartRate": 59}},
+                    ]
+                }
+            )
+        },
+        anchor_datetime=datetime(2026, 3, 5, 12, 5, tzinfo=UTC),
+    )
+
+    assert payload["heart_rate"] == {"avg_bpm": None, "min_bpm": None, "max_bpm": None}
+    assert "missing_intraday_hr_day_stats" in payload["notes"]
+
+
+def test_build_feature_payload_sets_top_level_hrv_coverage_from_intraday_mean() -> None:
+    payload = build_feature_payload(
+        raw_fitbit_data={
+            "hrv": _present_blob({"hrv": [{"value": {"dailyRmssd": 32.4, "deepRmssd": 21.8}}]}),
+            "hrv_all": _present_blob(
+                {
+                    "hrv": [
+                        {
+                            "dateTime": "2026-03-05",
+                            "minutes": [
+                                {"value": {"rmssd": 20.0, "coverage": 0.7, "lf": 10.0, "hf": 5.0}},
+                                {"value": {"rmssd": 24.0, "coverage": 0.9, "lf": 20.0, "hf": 10.0}},
+                            ],
+                        }
+                    ]
+                }
+            ),
+        }
+    )
+
+    assert payload["derived"]["hrvIntradayCoverageMean"] == 0.8
+    assert payload["hrv"]["coverage"] == 0.8
+
+
+def test_build_feature_payload_sets_top_level_hrv_coverage_fallback_without_intraday() -> None:
+    payload = build_feature_payload(
+        raw_fitbit_data={
+            "hrv": _present_blob({"hrv": [{"value": {"dailyRmssd": 32.4, "deepRmssd": 21.8}}]}),
+        }
+    )
+
+    assert payload["hrv"]["coverage"] == 0.5
+
+
+def test_build_feature_payload_gates_evening_restlessness_by_anchor_hour() -> None:
+    raw_fitbit_data = {
+        "steps_intraday": _present_blob(
+            {
+                "activities-steps-intraday": {
+                    "dataset": [
+                        {"time": "19:00:00", "value": 100},
+                        {"time": "19:01:00", "value": 100},
+                    ]
+                }
+            }
+        )
+    }
+
+    morning_payload = build_feature_payload(
+        raw_fitbit_data=raw_fitbit_data,
+        anchor_datetime=datetime(2026, 3, 5, 8, 0, tzinfo=UTC),
+    )
+    evening_payload = build_feature_payload(
+        raw_fitbit_data=raw_fitbit_data,
+        anchor_datetime=datetime(2026, 3, 5, 20, 0, tzinfo=UTC),
+    )
+
+    assert morning_payload["derived"]["eveningRestlessnessScore"] is None
+    assert evening_payload["derived"]["eveningRestlessnessScore"] == 1.0
+
+
+def test_build_feature_payload_computes_sleep_fragmentation_from_awake_ratio() -> None:
+    payload = build_feature_payload(
+        raw_fitbit_data={
+            "sleep": _present_blob(
+                {
+                    "sleep": [
+                        {
+                            "isMainSleep": True,
+                            "minutesAsleep": 300,
+                            "minutesAwake": 30,
+                            "startTime": "2026-03-04T23:15:00-05:00",
+                            "endTime": "2026-03-05T05:45:00-05:00",
+                            "levels": {
+                                "summary": {
+                                    "deep": {"minutes": 80},
+                                    "rem": {"minutes": 40},
+                                    "light": {"minutes": 180},
+                                    "wake": {"minutes": 30},
+                                }
+                            },
+                        }
+                    ]
+                }
+            )
+        }
+    )
+
+    assert round(payload["derived"]["sleepFragmentationScore"], 6) == round(30.0 / 330.0, 6)
+    assert "missing_sleep_fragmentation_detail" not in payload["notes"]
+
+
+def test_build_feature_payload_computes_sleep_fragmentation_from_wake_summary_fallback() -> None:
+    payload = build_feature_payload(
+        raw_fitbit_data={
+            "sleep": _present_blob(
+                {
+                    "sleep": [
+                        {
+                            "isMainSleep": True,
+                            "minutesAsleep": 360,
+                            "startTime": "2026-03-04T23:15:00-05:00",
+                            "endTime": "2026-03-05T06:15:00-05:00",
+                            "levels": {
+                                "summary": {
+                                    "deep": {"minutes": 90},
+                                    "rem": {"minutes": 45},
+                                    "light": {"minutes": 225},
+                                    "wake": {"minutes": 24},
+                                }
+                            },
+                        }
+                    ]
+                }
+            )
+        }
+    )
+
+    assert round(payload["derived"]["sleepFragmentationScore"], 6) == round(24.0 / 384.0, 6)
+    assert "missing_sleep_fragmentation_detail" not in payload["notes"]
+
+
 def test_build_feature_payload_derives_intraday_azm_from_minutes_shape() -> None:
     payload = build_feature_payload(
         raw_fitbit_data={
@@ -345,6 +522,27 @@ def test_build_feature_payload_uses_breathing_all_and_spo2_range() -> None:
     assert derived["spo2Avg"] == 96.7
     assert derived["spo2Avg7dAvg"] == 97.0
     assert round(derived["spo2AvgDeviationFrom7d"], 1) == -0.3
+
+
+def test_build_feature_payload_reads_spo2_range_from_items_wrapper() -> None:
+    payload = build_feature_payload(
+        raw_fitbit_data={
+            "spo2": _present_blob({"spo2": [{"value": {"avg": 96.7, "min": 93.5, "max": 99.8}}]}),
+            "spo2_range": _present_blob(
+                {
+                    "items": [
+                        {"dateTime": "2026-03-03", "value": {"avg": 95.0}},
+                        {"dateTime": "2026-03-04", "value": {"avg": 96.0}},
+                        {"dateTime": "2026-03-05", "value": {"avg": 97.0}},
+                    ]
+                }
+            ),
+        }
+    )
+
+    derived = payload["derived"]
+    assert derived["spo2Avg7dAvg"] == 96.0
+    assert round(derived["spo2AvgDeviationFrom7d"], 1) == 0.7
 
 
 def test_build_feature_payload_extracts_latest_exercise_azm_from_zone_minutes() -> None:

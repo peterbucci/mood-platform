@@ -88,7 +88,19 @@ class FitbitOAuthService:
             scope=token_payload.scope,
             expires_in=token_payload.expires_in,
         )
-        self._register_webhook_subscription(user_id=user_id)
+        try:
+            self._register_webhook_subscription(user_id=user_id)
+        except FitbitOAuthExchangeError:
+            # Keep OAuth callback non-blocking for token persistence; the worker/webhook
+            # path can still function and subscription issues can be repaired separately.
+            logger.warning(
+                (
+                    "OAuth token stored but Fitbit webhook subscription registration "
+                    "failed for user %s."
+                ),
+                user_id,
+                exc_info=True,
+            )
         return expires_at
 
     def exchange_authorization_code(self, *, code: str) -> FitbitTokenPayload:
@@ -198,6 +210,11 @@ class FitbitOAuthService:
         if 200 <= response.status_code < 300:
             logger.info("Fitbit webhook subscription registered.")
             return
+        logger.warning(
+            "Fitbit webhook subscription registration failed with status=%s body=%s",
+            response.status_code,
+            response.text,
+        )
         raise FitbitOAuthExchangeError("Failed to register Fitbit webhook subscription.")
 
     def get_status(self, *, user_id: uuid.UUID) -> tuple[bool, datetime | None]:

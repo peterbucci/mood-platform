@@ -148,6 +148,41 @@ def build_feature_payload(
     activity_features = features_from_activity(blob=activity_blob)
     nutrition_features = features_from_nutrition(blob=nutrition_blob, notes=notes)
     water_features = features_from_water(blob=water_blob, notes=notes)
+    hrv_features = features_from_hrv(blob=hrv_blob, notes=notes)
+    derived_features = build_derived_features(
+        anchor_datetime=anchor,
+        activity_blob=activity_blob,
+        heart_blob=heart_blob,
+        sleep_blob=sleep_blob,
+        hrv_blob=hrv_blob,
+        breathing_rate_blob=breathing_rate_blob,
+        spo2_blob=spo2_blob,
+        temp_blob=temp_blob,
+        nutrition_blob=nutrition_blob,
+        water_blob=water_blob,
+        steps_intraday_blob=steps_intraday_blob,
+        calories_intraday_blob=calories_intraday_blob,
+        azm_intraday_blob=azm_intraday_blob,
+        heart_intraday_blob=heart_intraday_blob,
+        latest_exercise_blob=latest_exercise_blob,
+        steps_7d_blob=steps_7d_blob,
+        heart_7d_blob=heart_7d_blob,
+        hrv_range_blob=hrv_range_blob,
+        hrv_all_blob=hrv_all_blob,
+        sleep_range_blob=sleep_range_blob,
+        breathing_rate_all_blob=breathing_rate_all_blob,
+        breathing_rate_range_blob=breathing_rate_range_blob,
+        spo2_range_blob=spo2_range_blob,
+        temp_range_blob=temp_range_blob,
+        weather_blob=weather_blob,
+        air_quality_blob=air_quality_blob,
+        client_features=passthrough_client_features,
+        notes=notes,
+    )
+    hrv_features["coverage"] = _canonical_hrv_coverage(
+        hrv_features=hrv_features,
+        derived_features=derived_features,
+    )
 
     payload = {
         # Keep existing top-level keys stable for API clients.
@@ -166,6 +201,8 @@ def build_feature_payload(
         "heart_rate": _legacy_or_derived_heart_rate_section(
             raw_fitbit_data=raw_fitbit_data,
             heart_blob=heart_blob,
+            heart_intraday_blob=heart_intraday_blob,
+            notes=notes,
         ),
         "resting_heart_rate": _legacy_or_derived_resting_heart_rate_section(
             raw_fitbit_data=raw_fitbit_data,
@@ -179,42 +216,13 @@ def build_feature_payload(
         ),
         # New parity sections.
         "activity": activity_features,
-        "hrv": features_from_hrv(blob=hrv_blob, notes=notes),
+        "hrv": hrv_features,
         "breathing_rate": features_from_breathing_rate(blob=breathing_rate_blob, notes=notes),
         "spo2": features_from_spo2(blob=spo2_blob, notes=notes),
         "temp": features_from_temp(blob=temp_blob, notes=notes),
         "nutrition": nutrition_features,
         "water": water_features,
-        "derived": build_derived_features(
-            anchor_datetime=anchor,
-            activity_blob=activity_blob,
-            heart_blob=heart_blob,
-            sleep_blob=sleep_blob,
-            hrv_blob=hrv_blob,
-            breathing_rate_blob=breathing_rate_blob,
-            spo2_blob=spo2_blob,
-            temp_blob=temp_blob,
-            nutrition_blob=nutrition_blob,
-            water_blob=water_blob,
-            steps_intraday_blob=steps_intraday_blob,
-            calories_intraday_blob=calories_intraday_blob,
-            azm_intraday_blob=azm_intraday_blob,
-            heart_intraday_blob=heart_intraday_blob,
-            latest_exercise_blob=latest_exercise_blob,
-            steps_7d_blob=steps_7d_blob,
-            heart_7d_blob=heart_7d_blob,
-            hrv_range_blob=hrv_range_blob,
-            hrv_all_blob=hrv_all_blob,
-            sleep_range_blob=sleep_range_blob,
-            breathing_rate_all_blob=breathing_rate_all_blob,
-            breathing_rate_range_blob=breathing_rate_range_blob,
-            spo2_range_blob=spo2_range_blob,
-            temp_range_blob=temp_range_blob,
-            weather_blob=weather_blob,
-            air_quality_blob=air_quality_blob,
-            client_features=passthrough_client_features,
-            notes=notes,
-        ),
+        "derived": derived_features,
         "clientFeatures": passthrough_client_features,
         "notes": notes,
     }
@@ -264,9 +272,11 @@ def features_from_hrv(*, blob: dict[str, Any] | None, notes: list[str]) -> dict[
     output["deep_rmssd"] = _to_float(value.get("deepRmssd") or value.get("deepSleepRmssd"))
     output["coverage"] = _to_float(value.get("coverage"))
 
-    if all(v is None for v in output.values()):
+    # Node parity: "coverage" is optional and should not by itself trigger partial_hrv.
+    core_values = [output["daily_rmssd"], output["deep_rmssd"]]
+    if all(v is None for v in core_values):
         _add_note(notes, "partial_hrv")
-    elif any(v is None for v in output.values()):
+    elif any(v is None for v in core_values):
         _add_note(notes, "partial_hrv")
     return output
 
@@ -392,6 +402,22 @@ def features_from_water(*, blob: dict[str, Any] | None, notes: list[str]) -> dic
     if output["water_ml"] is None:
         _add_note(notes, "partial_water")
     return output
+
+
+def _canonical_hrv_coverage(
+    *,
+    hrv_features: dict[str, float | None],
+    derived_features: dict[str, Any],
+) -> float | None:
+    intraday_coverage_mean = _to_float(derived_features.get("hrvIntradayCoverageMean"))
+    if intraday_coverage_mean is not None:
+        return intraday_coverage_mean
+
+    # Fallback rule: when daily RMSSD exists but intraday coverage is unavailable,
+    # expose a conservative synthetic coverage so top-level HRV remains non-null.
+    if _to_float(hrv_features.get("daily_rmssd")) is not None:
+        return 0.5
+    return _to_float(hrv_features.get("coverage"))
 
 
 def build_derived_features(
@@ -564,8 +590,12 @@ def build_derived_features(
         if minutes_asleep is not None:
             derived["sleepDurationLastNightHrs"] = round(minutes_asleep / 60.0, 3)
         derived["sleepEfficiency"] = _to_float(primary_sleep.get("efficiency"))
-        derived["wasoMinutes"] = _to_float(primary_sleep.get("minutesAwake"))
         levels_summary = _get_nested(primary_sleep, "levels", "summary")
+        awake_minutes = _to_float(primary_sleep.get("minutesAwake"))
+        if awake_minutes is None:
+            awake_minutes = _to_float(_get_nested(levels_summary, "wake", "minutes"))
+        if awake_minutes is not None and awake_minutes > 0:
+            derived["wasoMinutes"] = awake_minutes
         deep_minutes = _to_float(_get_nested(levels_summary, "deep", "minutes"))
         rem_minutes = _to_float(_get_nested(levels_summary, "rem", "minutes"))
         total_minutes = _to_float(primary_sleep.get("minutesAsleep"))
@@ -580,9 +610,12 @@ def build_derived_features(
             derived["sleepOnsetLocalHour"] = start_time.hour
         if end_time is not None:
             derived["wakeTimeLocalHour"] = end_time.hour
-        awakenings = _to_float(primary_sleep.get("awakeningsCount"))
-        if awakenings is not None and total_minutes and total_minutes > 0:
-            derived["sleepFragmentationScore"] = awakenings / total_minutes
+        total_window_minutes = (total_minutes or 0.0) + (awake_minutes or 0.0)
+        if awake_minutes is not None and awake_minutes > 0 and total_window_minutes > 0:
+            fragmentation_ratio = awake_minutes / total_window_minutes
+            derived["sleepFragmentationScore"] = min(1.0, max(0.0, fragmentation_ratio))
+        elif awake_minutes is None or total_window_minutes <= 0:
+            _add_note(notes, "missing_sleep_fragmentation_detail")
 
     sleep_entries = _extract_sleep_entries(blob=sleep_range_blob)
     if sleep_entries:
@@ -717,8 +750,10 @@ def build_derived_features(
     if _to_float(derived.get("hrZNow")) is not None:
         derived["stressSpikeFlag"] = _to_float(derived.get("hrZNow")) > 1.5
     if _to_float(derived.get("stepsLast60m")) is not None:
-        if anchor_datetime.hour >= 20:
-            derived["eveningRestlessnessScore"] = _to_float(derived.get("stepsLast60m")) / 200.0
+        derived["eveningRestlessnessScore"] = _compute_evening_restlessness_score(
+            anchor_hour=anchor_datetime.hour,
+            steps_last_60m=_to_float(derived.get("stepsLast60m")),
+        )
         if anchor_datetime.hour <= 11 and _to_float(derived.get("stepsLast60m")) is not None:
             derived["morningLethargyScore"] = max(
                 0.0, 1.0 - (_to_float(derived.get("stepsLast60m")) / 200.0)
@@ -856,27 +891,37 @@ def _legacy_or_derived_exercise_section(
 
 
 def _legacy_or_derived_heart_rate_section(
-    *, raw_fitbit_data: dict[str, Any], heart_blob: dict[str, Any] | None
+    *,
+    raw_fitbit_data: dict[str, Any],
+    heart_blob: dict[str, Any] | None,
+    heart_intraday_blob: dict[str, Any] | None,
+    notes: list[str],
 ) -> dict[str, Any]:
     legacy = _legacy_section(raw_fitbit_data=raw_fitbit_data, key="heart_rate")
     if legacy is not None:
         return legacy
 
-    payload = _blob_payload(heart_blob)
-    dataset = _get_nested(payload, "activities-heart-intraday", "dataset")
-    values: list[int] = []
-    if isinstance(dataset, list):
-        for point in dataset:
-            if isinstance(point, Mapping):
-                bpm = _to_int(point.get("value"))
-                if bpm is not None:
-                    values.append(bpm)
-    if not values:
+    # Day-level heart stats should come from the same intraday minute signal used for
+    # derived heart features, so top-level and derived payloads stay consistent.
+    intraday_values = _extract_intraday_series(
+        blob=heart_intraday_blob,
+        dataset_key="activities-heart-intraday",
+        value_key="value",
+    )
+    if not intraday_values:
+        intraday_values = _extract_intraday_series(
+            blob=heart_blob,
+            dataset_key="activities-heart-intraday",
+            value_key="value",
+        )
+    if not intraday_values:
+        _add_note(notes, "missing_intraday_hr_day_stats")
         return {"avg_bpm": None, "min_bpm": None, "max_bpm": None}
+    avg_bpm, min_bpm, max_bpm = compute_day_hr_stats(intraday_values)
     return {
-        "avg_bpm": int(sum(values) / len(values)),
-        "min_bpm": min(values),
-        "max_bpm": max(values),
+        "avg_bpm": avg_bpm,
+        "min_bpm": min_bpm,
+        "max_bpm": max_bpm,
     }
 
 
@@ -1256,6 +1301,28 @@ def _window_max(values: list[float], window: int) -> float | None:
     return float(max(slice_values))
 
 
+def compute_day_hr_stats(
+    intraday_hr_series: list[float],
+) -> tuple[float | None, float | None, float | None]:
+    if not intraday_hr_series:
+        return (None, None, None)
+    return (
+        float(sum(intraday_hr_series) / len(intraday_hr_series)),
+        float(min(intraday_hr_series)),
+        float(max(intraday_hr_series)),
+    )
+
+
+def _compute_evening_restlessness_score(
+    *,
+    anchor_hour: int,
+    steps_last_60m: float | None,
+) -> float | None:
+    if steps_last_60m is None or anchor_hour < 20:
+        return None
+    return steps_last_60m / 200.0
+
+
 def _rolling_max_sum(values: list[float], window: int) -> float | None:
     if not values:
         return None
@@ -1609,7 +1676,12 @@ def _extract_spo2_range_values(*, blob: dict[str, Any] | None) -> list[float]:
     payload = _blob_payload(blob)
     entries = payload.get("spo2")
     if not isinstance(entries, list):
-        return []
+        # Fitbit range endpoint often returns a root array; our wrapper stores it under "items".
+        fallback_entries = payload.get("items")
+        if isinstance(fallback_entries, list):
+            entries = fallback_entries
+        else:
+            return []
     values: list[float] = []
     for entry in entries:
         if not isinstance(entry, Mapping):

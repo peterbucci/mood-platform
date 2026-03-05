@@ -95,6 +95,32 @@ def test_fetch_signal_returns_present_wrapper_for_valid_json() -> None:
     assert wrapped["payload"]["hrv"][0]["value"]["dailyRmssd"] == 31.2
 
 
+def test_fetch_signal_retries_once_after_read_timeout() -> None:
+    client = FitbitSignalPullClient(session_factory=_UnusedSessionFactory())  # type: ignore[arg-type]
+    attempts = 0
+
+    def _fetch_fn() -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise httpx.ReadTimeout(
+                "read timed out",
+                request=httpx.Request(
+                    "GET", "https://api.fitbit.com/1/user/-/hrv/date/2026-03-05/all.json"
+                ),
+            )
+        return httpx.Response(200, json={"hrv": [{"value": {"dailyRmssd": 28.1}}]})
+
+    wrapped = client._fetch_signal(  # noqa: SLF001
+        signal_name="hrv_all",
+        fetch_fn=_fetch_fn,
+    )
+
+    assert attempts == 2
+    assert wrapped["__missing"] is False
+    assert wrapped["raw_status"] == 200
+
+
 def test_build_fitbit_client_prefers_static_payload_when_configured(monkeypatch) -> None:
     monkeypatch.setenv("FITBIT_STATIC_PAYLOAD", '{"steps":{"count":1234}}')
     client = build_fitbit_client(session_factory=_UnusedSessionFactory())  # type: ignore[arg-type]

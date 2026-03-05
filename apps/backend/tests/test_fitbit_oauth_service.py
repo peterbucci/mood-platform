@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 import httpx
 import pytest
 from app.services.fitbit_api_client import FitbitApiClient
-from app.services.fitbit_oauth_service import FitbitOAuthExchangeError, FitbitOAuthService
+from app.services.fitbit_oauth_service import (
+    FitbitOAuthExchangeError,
+    FitbitOAuthService,
+    FitbitTokenPayload,
+)
 from app.settings import Settings
 
 
@@ -56,3 +61,52 @@ def test_register_webhook_subscription_raises_for_non_success(monkeypatch) -> No
 
     with pytest.raises(FitbitOAuthExchangeError):
         service._register_webhook_subscription(user_id=uuid.uuid4())  # noqa: SLF001
+
+
+def test_handle_callback_does_not_fail_when_subscription_registration_fails(monkeypatch) -> None:
+    user_id = uuid.uuid4()
+    expected_expiry = datetime(2026, 3, 5, 12, 0, tzinfo=UTC)
+
+    class _StateRepo:
+        def consume_state(self, *, state: str, user_id: uuid.UUID) -> bool:  # noqa: ARG002
+            return True
+
+    class _TokenService:
+        def store_token(self, **kwargs):  # noqa: ANN003, ANN201
+            _ = kwargs
+            return expected_expiry
+
+    service = FitbitOAuthService(
+        state_repository=_StateRepo(),  # type: ignore[arg-type]
+        token_service=_TokenService(),  # type: ignore[arg-type]
+        settings=Settings(
+            FITBIT_CLIENT_ID="client",
+            FITBIT_CLIENT_SECRET="secret",
+            FITBIT_REDIRECT_URI="https://example.test/callback",
+        ),
+    )
+
+    monkeypatch.setattr(
+        service,
+        "exchange_authorization_code",
+        lambda code: FitbitTokenPayload(  # noqa: ARG005
+            access_token="access",
+            refresh_token="refresh",
+            expires_in=3600,
+            scope="activity",
+            user_id="fitbit-user",
+        ),
+    )
+
+    def _raise_subscription_error(*, user_id: uuid.UUID) -> None:  # noqa: ARG001
+        raise FitbitOAuthExchangeError("Failed to register Fitbit webhook subscription.")
+
+    monkeypatch.setattr(service, "_register_webhook_subscription", _raise_subscription_error)
+
+    expires_at = service.handle_callback(
+        user_id=user_id,
+        code="auth-code",
+        state="state",
+    )
+
+    assert expires_at == expected_expiry

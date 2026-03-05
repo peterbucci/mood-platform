@@ -243,6 +243,7 @@ class FitbitApiClient:
         return self.fitbit_fetch(
             user_id=user_id,
             url=self._fitbit_url(f"/1/user/-/hrv/date/{date_iso}/all.json"),
+            timeout=20.0,
         )
 
     def fetch_sleep_range(
