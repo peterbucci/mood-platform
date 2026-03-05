@@ -74,6 +74,19 @@ Each request persists a row in `requests` with:
 - `status = "pending"`
 - `source = "phone"`
 
+Request status/cancel endpoints:
+
+- `GET /requests/{id}`
+  - returns `{ id, status, featureId, createdAt }`
+- `GET /requests/pending/count`
+  - returns `{ pendingCount }`
+- `DELETE /requests/{id}`
+  - if request is `pending`: transitions to `canceled` and returns request payload
+  - if request is already `canceled`: returns `200` idempotently
+  - if request is `fulfilled`: returns `409` (cancel not allowed)
+  - ownership is enforced; unknown/other-user request returns `404`
+  - `deleteFeatureToo=true` is reserved and currently returns `409` for fulfilled requests
+
 ## Fitbit OAuth
 
 The backend supports Fitbit OAuth connect/disconnect endpoints:
