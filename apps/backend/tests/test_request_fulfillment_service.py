@@ -271,6 +271,17 @@ def test_request_processing_is_idempotent() -> None:
                 feature_count = cursor.fetchone()[0]
                 cursor.execute(
                     """
+                    SELECT id
+                    FROM features
+                    WHERE "userId" = %s
+                    ORDER BY "createdAt" DESC
+                    LIMIT 1
+                    """,
+                    (user_id,),
+                )
+                feature_row = cursor.fetchone()
+                cursor.execute(
+                    """
                     SELECT status, "featureId"
                     FROM requests
                     WHERE id = %s
@@ -280,9 +291,10 @@ def test_request_processing_is_idempotent() -> None:
                 request_row = cursor.fetchone()
 
         assert feature_count == 1
+        assert feature_row is not None
         assert request_row is not None
         assert request_row[0] == "fulfilled"
-        assert request_row[1] is not None
+        assert request_row[1] == feature_row[0]
 
 
 def test_slow_fetch_completes_without_service_level_timeout_retry() -> None:

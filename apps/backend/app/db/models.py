@@ -61,6 +61,43 @@ class Feature(Base):
     window_end: Mapped[datetime | None] = mapped_column("windowEnd", sa.DateTime(timezone=True))
 
 
+class Label(Base):
+    __tablename__ = "labels"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "category IN ('energized','calm','stressed','tired')",
+            name="ck_labels_category",
+        ),
+        sa.Index("ix_labels_feature_id", "featureId"),
+        sa.Index("ix_labels_request_id", "requestId"),
+        sa.Index("ix_labels_user_created_at_desc", "userId", sa.text('"createdAt" DESC')),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column("userId", sa.Text, nullable=False)
+    feature_id: Mapped[str] = mapped_column(
+        "featureId",
+        sa.Text,
+        sa.ForeignKey("features.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    request_id: Mapped[str] = mapped_column(
+        "requestId",
+        sa.Text,
+        sa.ForeignKey("requests.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    label: Mapped[str | None] = mapped_column(sa.Text)
+    emotion_word: Mapped[str] = mapped_column("emotionWord", sa.Text, nullable=False)
+    category: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        "createdAt",
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.text("now()"),
+    )
+
+
 class WorkerLock(Base):
     __tablename__ = "worker_locks"
     __table_args__ = (sa.Index("ix_worker_locks_expires_at", "expires_at"),)

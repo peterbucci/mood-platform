@@ -12,6 +12,7 @@ from app.repositories.feature_request_repository import FeatureRequestRepository
 from app.repositories.feature_set_repository import FeatureSetRepository
 from app.repositories.fitbit_oauth_repository import FitbitOAuthRepository
 from app.repositories.fitbit_token_repository import FitbitTokenRepository
+from app.repositories.label_repository import LabelRepository
 from app.repositories.mood_entry_repository import MoodEntryRepository
 from app.repositories.postgres import PostgresRepository
 from app.repositories.redis import RedisRepository
@@ -23,6 +24,7 @@ from app.services.fitbit_oauth_service import FitbitOAuthService
 from app.services.fitbit_token_service import FitbitTokenService
 from app.services.fitbit_webhook_ingestion_service import FitbitWebhookIngestionService
 from app.services.health_service import HealthService
+from app.services.label_service import LabelService
 from app.services.mood_entry_service import MoodEntryService, get_owner_user_id
 from app.services.request_fulfillment_service import RequestFulfillmentService
 from app.services.webhook_coalescer import WebhookCoalescer
@@ -53,6 +55,12 @@ def get_mood_entry_repository(
     db_session: Annotated[Session, Depends(get_db_session)],
 ) -> MoodEntryRepository:
     return MoodEntryRepository(session=db_session)
+
+
+def get_label_repository(
+    db_session: Annotated[Session, Depends(get_db_session)],
+) -> LabelRepository:
+    return LabelRepository(session=db_session)
 
 
 def get_feature_set_repository(
@@ -158,6 +166,15 @@ def get_mood_entry_service(
 ) -> MoodEntryService:
     return MoodEntryService(
         repository=mood_entry_repository,
+        owner_user_id=get_owner_user_id(),
+    )
+
+
+def get_label_service(
+    label_repository: Annotated[LabelRepository, Depends(get_label_repository)],
+) -> LabelService:
+    return LabelService(
+        repository=label_repository,
         owner_user_id=get_owner_user_id(),
     )
 
