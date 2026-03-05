@@ -18,6 +18,7 @@ from app.repositories.redis import RedisRepository
 from app.repositories.webhook_job_repository import WebhookJobRepository
 from app.services.feature_request_service import FeatureRequestService
 from app.services.feature_service import FeatureService
+from app.services.fitbit_data_client import build_fitbit_client
 from app.services.fitbit_oauth_service import FitbitOAuthService
 from app.services.fitbit_token_service import FitbitTokenService
 from app.services.fitbit_webhook_ingestion_service import FitbitWebhookIngestionService
@@ -26,7 +27,6 @@ from app.services.mood_entry_service import MoodEntryService, get_owner_user_id
 from app.services.request_fulfillment_service import RequestFulfillmentService
 from app.services.webhook_coalescer import WebhookCoalescer
 from app.settings import get_settings
-from app.worker import StaticFitbitClient
 
 logger = logging.getLogger(__name__)
 
@@ -104,11 +104,12 @@ def _has_pending_requests_for_user(user_id: str) -> bool:
 
 def _trigger_fulfillment_for_user(user_id: str) -> None:
     session_factory = db_session._session_factory()
+    fitbit_client = build_fitbit_client(session_factory=session_factory)
     with session_factory() as session:
         repository = FeatureRequestRepository(session=session)
         service = RequestFulfillmentService(
             repository=repository,
-            fitbit_client=StaticFitbitClient(),
+            fitbit_client=fitbit_client,
         )
         stats = service.process_pending_requests_for_user(user_id=user_id)
         logger.debug(

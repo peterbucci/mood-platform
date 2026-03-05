@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db.session import get_database_url_from_env
 from app.repositories.feature_request_repository import FeatureRequestRepository
 from app.repositories.worker_lock_repository import WorkerLockRepository
+from app.services.fitbit_data_client import build_fitbit_client
 from app.services.request_fulfillment_service import FitbitClientProtocol, RequestFulfillmentService
 from app.services.worker_runtime import WorkerRuntime
 
@@ -30,33 +31,6 @@ DEFAULT_WORKER_LOCK_TTL_SECONDS = 30.0
 DEFAULT_WORKER_LOCK_PREFIX = "fulfillment_lock"
 DEFAULT_WORKER_HEALTH_HOST = "0.0.0.0"
 DEFAULT_WORKER_HEALTH_PORT = 3001
-
-
-class StaticFitbitClient(FitbitClientProtocol):
-    def __init__(self) -> None:
-        raw_payload = os.getenv("FITBIT_STATIC_PAYLOAD", "").strip()
-        if not raw_payload:
-            self._payload: dict[str, Any] = {}
-            return
-
-        try:
-            parsed_payload = json.loads(raw_payload)
-        except json.JSONDecodeError:
-            logger.warning("Invalid FITBIT_STATIC_PAYLOAD JSON; using empty payload.")
-            self._payload = {}
-            return
-
-        if not isinstance(parsed_payload, dict):
-            logger.warning(
-                "FITBIT_STATIC_PAYLOAD must deserialize to an object; using empty payload."
-            )
-            self._payload = {}
-            return
-
-        self._payload = parsed_payload
-
-    def fetch_user_data(self, *, user_id: str) -> dict[str, Any]:
-        return dict(self._payload)
 
 
 class WorkerHealthServer:
@@ -305,9 +279,10 @@ def main() -> int:
         level=os.getenv("LOG_LEVEL", "INFO"),
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
     )
+    session_factory = build_session_factory()
     run_worker(
-        session_factory=build_session_factory(),
-        fitbit_client=StaticFitbitClient(),
+        session_factory=session_factory,
+        fitbit_client=build_fitbit_client(session_factory=session_factory),
         base_idle_sleep_seconds=_parse_env_float(
             name="WORKER_BASE_IDLE_SLEEP_SECONDS",
             default=DEFAULT_WORKER_BASE_IDLE_SLEEP_SECONDS,

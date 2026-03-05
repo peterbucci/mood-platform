@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import random
 import threading
 import time
 import uuid
-from email.utils import parsedate_to_datetime
 from typing import Any
 from urllib.parse import urljoin
 
@@ -26,21 +24,15 @@ class FitbitApiClient:
         http_client: httpx.Client | None = None,
         api_base_url: str = DEFAULT_FITBIT_API_BASE_URL,
         min_fetch_interval_seconds: float = 0.0,
-        max_retries: int = 0,
-        backoff_base_seconds: float = 1.0,
         sleep_func=time.sleep,
         time_func=time.time,
-        jitter_func=random.random,
     ) -> None:
         self._token_service = token_service
         self._http_client = http_client
         self._api_base_url = api_base_url.rstrip("/")
         self._min_fetch_interval_seconds = max(0.0, min_fetch_interval_seconds)
-        self._max_retries = max(0, max_retries)
-        self._backoff_base_seconds = max(0.1, backoff_base_seconds)
         self._sleep = sleep_func
         self._time = time_func
-        self._jitter = jitter_func
 
     def fitbit_fetch(
         self,
@@ -55,36 +47,33 @@ class FitbitApiClient:
         timeout: float = 10.0,
     ) -> httpx.Response:
         access_token = self._token_service.get_access_token(user_id=user_id)
-        retried_401 = False
-        retry_count = 0
+        self._throttle_for_user(user_id)
+        response = self._request(
+            method=method,
+            url=url,
+            access_token=access_token,
+            headers=headers,
+            params=params,
+            json_payload=json_payload,
+            data=data,
+            timeout=timeout,
+        )
+        if response.status_code != 401:
+            return response
 
-        while True:
-            self._throttle_for_user(user_id)
-            response = self._request(
-                method=method,
-                url=url,
-                access_token=access_token,
-                headers=headers,
-                params=params,
-                json_payload=json_payload,
-                data=data,
-                timeout=timeout,
-            )
-            if response.status_code == 401 and not retried_401:
-                retried_401 = True
-                self._token_service.refresh_token(user_id=user_id)
-                access_token = self._token_service.get_access_token(user_id=user_id)
-                continue
-
-            if response.status_code != 429:
-                return response
-
-            if retry_count >= self._max_retries:
-                return response
-            retry_count += 1
-
-            retry_delay = self._retry_delay_seconds(response=response, retry_count=retry_count)
-            self._sleep(retry_delay)
+        self._token_service.refresh_token(user_id=user_id)
+        refreshed_access_token = self._token_service.get_access_token(user_id=user_id)
+        self._throttle_for_user(user_id)
+        return self._request(
+            method=method,
+            url=url,
+            access_token=refreshed_access_token,
+            headers=headers,
+            params=params,
+            json_payload=json_payload,
+            data=data,
+            timeout=timeout,
+        )
 
     # Compatibility helper matching the story contract naming.
     def fitbitFetch(  # noqa: N802
@@ -364,36 +353,3 @@ class FitbitApiClient:
                     self._sleep(remaining)
                     now = self._time()
             self._last_request_at_by_user[user_key] = now
-
-    def _retry_delay_seconds(self, *, response: httpx.Response, retry_count: int) -> float:
-        retry_after_delay = self._parse_retry_after_seconds(response=response)
-        if retry_after_delay is not None:
-            return retry_after_delay
-
-        exponential_delay = self._backoff_base_seconds * (2 ** (retry_count - 1))
-        jitter = self._jitter() * self._backoff_base_seconds
-        return max(0.1, exponential_delay + jitter)
-
-    def _parse_retry_after_seconds(self, *, response: httpx.Response) -> float | None:
-        retry_after_value = response.headers.get("Retry-After")
-        if not retry_after_value:
-            return None
-
-        retry_after_value = retry_after_value.strip()
-        if not retry_after_value:
-            return None
-
-        try:
-            seconds = float(retry_after_value)
-            return max(0.0, seconds)
-        except ValueError:
-            pass
-
-        try:
-            retry_after_datetime = parsedate_to_datetime(retry_after_value)
-        except (TypeError, ValueError):
-            return None
-
-        retry_after_timestamp = retry_after_datetime.timestamp()
-        delay = retry_after_timestamp - self._time()
-        return max(0.0, delay)

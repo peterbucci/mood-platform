@@ -70,31 +70,49 @@ def test_fitbit_fetch_does_not_retry_more_than_once() -> None:
     assert len(auth_headers) == 2
 
 
-def test_fitbit_fetch_retries_on_429_using_retry_after_header() -> None:
+def test_fitbit_fetch_is_fail_fast_on_429() -> None:
     user_id = uuid.UUID("00000000-0000-0000-0000-00000000ca03")
     token_service = _FakeTokenService()
-    sleep_calls: list[float] = []
     request_count = 0
 
     def _handler(_request: httpx.Request) -> httpx.Response:
         nonlocal request_count
         request_count += 1
-        if request_count == 1:
-            return httpx.Response(429, headers={"Retry-After": "2"})
-        return httpx.Response(200, json={"ok": True})
+        return httpx.Response(429, headers={"Retry-After": "2"})
 
     with httpx.Client(transport=httpx.MockTransport(_handler)) as http_client:
         client = FitbitApiClient(
             token_service=token_service,
             http_client=http_client,
-            max_retries=2,
-            sleep_func=sleep_calls.append,
         )
         response = client.fitbit_fetch(
             user_id=user_id,
             url="https://api.fitbit.com/1/user/-/activities/date/2026-03-05.json",
         )
 
-    assert response.status_code == 200
-    assert request_count == 2
-    assert sleep_calls == [2.0]
+    assert response.status_code == 429
+    assert request_count == 1
+
+
+def test_fitbit_endpoint_helpers_include_breathing_all_and_spo2_range_paths() -> None:
+    user_id = uuid.UUID("00000000-0000-0000-0000-00000000ca04")
+    token_service = _FakeTokenService()
+    seen_paths: list[str] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        seen_paths.append(str(request.url.path))
+        return httpx.Response(200, json={"ok": True})
+
+    with httpx.Client(transport=httpx.MockTransport(_handler)) as http_client:
+        client = FitbitApiClient(token_service=token_service, http_client=http_client)
+        client.fetch_breathing_rate_all(user_id=user_id, date_iso="2026-03-05")
+        client.fetch_spo2_range(
+            user_id=user_id,
+            start_date_iso="2026-02-27",
+            end_date_iso="2026-03-05",
+        )
+
+    assert seen_paths == [
+        "/1/user/-/br/date/2026-03-05/all.json",
+        "/1/user/-/spo2/date/2026-02-27/2026-03-05.json",
+    ]

@@ -17,8 +17,20 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
-ROOT_DIR = Path(__file__).resolve().parents[3]
-ALEMBIC_CONFIG = ROOT_DIR / "apps" / "backend" / "alembic.ini"
+
+def _find_backend_root() -> Path:
+    file_path = Path(__file__).resolve()
+    for parent in file_path.parents:
+        if (parent / "alembic.ini").exists() and (parent / "app").is_dir():
+            return parent
+        nested_backend = parent / "apps" / "backend"
+        if (nested_backend / "alembic.ini").exists() and (nested_backend / "app").is_dir():
+            return nested_backend
+    raise RuntimeError("Could not locate backend root containing alembic.ini and app/.")
+
+
+ROOT_DIR = _find_backend_root()
+ALEMBIC_CONFIG = ROOT_DIR / "alembic.ini"
 
 
 class StubFitbitClient(FitbitClientProtocol):
@@ -79,7 +91,10 @@ def test_worker_single_iteration_fulfills_pending_request() -> None:
 
         assert feature_row is not None
         assert feature_row[0] == "fitbit-pipeline"
-        assert json.loads(feature_row[1]) == {"steps": {"count": 3210}}
+        parsed_payload = json.loads(feature_row[1])
+        assert parsed_payload["steps"] == {"count": 3210}
+        assert "notes" in parsed_payload
+        assert "missing_hrv" in parsed_payload["notes"]
 
 
 class _temporary_database:

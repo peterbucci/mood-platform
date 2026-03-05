@@ -13,8 +13,6 @@ DEFAULT_WEATHER_CACHE_TTL_SECONDS = 900
 DEFAULT_NIGHT_ANCHOR_START_HOUR = 18
 DEFAULT_NIGHT_ANCHOR_END_HOUR = 12
 DEFAULT_FITBIT_MIN_FETCH_INTERVAL_SECONDS = 0.2
-DEFAULT_FITBIT_MAX_RETRIES = 3
-DEFAULT_FITBIT_BACKOFF_BASE_SECONDS = 1.0
 DEFAULT_FITBIT_DEFAULT_TIMEZONE = "UTC"
 
 
@@ -34,8 +32,6 @@ class Settings:
     NIGHT_ANCHOR_START_HOUR: int = DEFAULT_NIGHT_ANCHOR_START_HOUR
     NIGHT_ANCHOR_END_HOUR: int = DEFAULT_NIGHT_ANCHOR_END_HOUR
     FITBIT_MIN_FETCH_INTERVAL_SECONDS: float = DEFAULT_FITBIT_MIN_FETCH_INTERVAL_SECONDS
-    FITBIT_MAX_RETRIES: int = DEFAULT_FITBIT_MAX_RETRIES
-    FITBIT_BACKOFF_BASE_SECONDS: float = DEFAULT_FITBIT_BACKOFF_BASE_SECONDS
     FITBIT_DEFAULT_TIMEZONE: str = DEFAULT_FITBIT_DEFAULT_TIMEZONE
 
     def fitbit_scope_query_value(self) -> str:
@@ -106,24 +102,6 @@ def get_settings() -> Settings:
     except ValueError:
         fitbit_min_fetch_interval_seconds = DEFAULT_FITBIT_MIN_FETCH_INTERVAL_SECONDS
 
-    configured_fitbit_max_retries = os.getenv(
-        "FITBIT_MAX_RETRIES",
-        str(DEFAULT_FITBIT_MAX_RETRIES),
-    ).strip()
-    try:
-        fitbit_max_retries = int(configured_fitbit_max_retries)
-    except ValueError:
-        fitbit_max_retries = DEFAULT_FITBIT_MAX_RETRIES
-
-    configured_fitbit_backoff_base_seconds = os.getenv(
-        "FITBIT_BACKOFF_BASE_SECONDS",
-        str(DEFAULT_FITBIT_BACKOFF_BASE_SECONDS),
-    ).strip()
-    try:
-        fitbit_backoff_base_seconds = float(configured_fitbit_backoff_base_seconds)
-    except ValueError:
-        fitbit_backoff_base_seconds = DEFAULT_FITBIT_BACKOFF_BASE_SECONDS
-
     return Settings(
         FEATURE_EXTRACTOR_VERSION=configured_version,
         FITBIT_CLIENT_ID=os.getenv("FITBIT_CLIENT_ID", "").strip(),
@@ -148,8 +126,6 @@ def get_settings() -> Settings:
         NIGHT_ANCHOR_START_HOUR=max(0, min(23, night_anchor_start_hour)),
         NIGHT_ANCHOR_END_HOUR=max(0, min(23, night_anchor_end_hour)),
         FITBIT_MIN_FETCH_INTERVAL_SECONDS=max(0.0, fitbit_min_fetch_interval_seconds),
-        FITBIT_MAX_RETRIES=max(0, fitbit_max_retries),
-        FITBIT_BACKOFF_BASE_SECONDS=max(0.1, fitbit_backoff_base_seconds),
         FITBIT_DEFAULT_TIMEZONE=os.getenv(
             "FITBIT_DEFAULT_TIMEZONE",
             DEFAULT_FITBIT_DEFAULT_TIMEZONE,

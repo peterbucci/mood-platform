@@ -3,11 +3,8 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
-from concurrent.futures import Future, ThreadPoolExecutor
-from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 from datetime import datetime
-from time import sleep
 from typing import Any, Protocol
 
 from app.repositories.feature_request_repository import PENDING_STATUS, FeatureRequestRepository
@@ -18,18 +15,12 @@ from app.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TIMEOUT_SECONDS = 5.0
-DEFAULT_BACKOFF_SECONDS = (0.25, 0.5, 1.0)
 DEFAULT_FEATURE_SOURCE = "fitbit-pipeline"
 DEFAULT_REQUEST_RETRY_BACKOFF_BASE_SECONDS = 30.0
 
 
 class FitbitClientProtocol(Protocol):
     def fetch_user_data(self, *, user_id: str) -> dict[str, Any]: ...
-
-
-class FitbitTimeoutError(Exception):
-    pass
 
 
 @dataclass
@@ -46,20 +37,21 @@ class RequestFulfillmentService:
         repository: FeatureRequestRepository,
         fitbit_client: FitbitClientProtocol,
         *,
-        timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
-        backoff_seconds: tuple[float, float, float] = DEFAULT_BACKOFF_SECONDS,
+        timeout_seconds: float = 5.0,
+        backoff_seconds: tuple[float, float, float] = (0.25, 0.5, 1.0),
         feature_source: str = DEFAULT_FEATURE_SOURCE,
-        sleep_func: Callable[[float], None] = sleep,
+        sleep_func: Callable[[float], None] | None = None,
         weather_client: WeatherContextClient | None = None,
         request_retry_backoff_base_seconds: float = DEFAULT_REQUEST_RETRY_BACKOFF_BASE_SECONDS,
         settings: Settings | None = None,
     ) -> None:
         self._repository = repository
         self._fitbit_client = fitbit_client
-        self._timeout_seconds = timeout_seconds
-        self._backoff_seconds = backoff_seconds
+        # Kept for constructor compatibility with existing wiring/tests.
+        _ = timeout_seconds
+        _ = backoff_seconds
+        _ = sleep_func
         self._feature_source = feature_source
-        self._sleep = sleep_func
         self._weather_client = weather_client or WeatherContextClient()
         self._request_retry_backoff_base_seconds = request_retry_backoff_base_seconds
         self._settings = settings or get_settings()
@@ -230,81 +222,16 @@ class RequestFulfillmentService:
         night_date_iso: str,
         source_timezone: str,
     ) -> dict[str, Any]:
-        max_retries = len(self._backoff_seconds)
-        attempt = 0
-        while True:
-            attempt += 1
-            try:
-                return self._call_fitbit_with_timeout(
-                    user_id=user_id,
-                    date_iso=date_iso,
-                    night_date_iso=night_date_iso,
-                    source_timezone=source_timezone,
-                )
-            except Exception as exc:
-                is_retryable = self._is_retryable_fitbit_error(exc)
-                if not is_retryable or attempt > max_retries:
-                    logger.error(
-                        "Fitbit fetch failed for request %s after %s attempts: %s",
-                        request_id,
-                        attempt,
-                        exc,
-                    )
-                    raise
-
-                retry_after_delay = _to_float(getattr(exc, "retry_after_seconds", None))
-                if retry_after_delay is not None and retry_after_delay > 0:
-                    delay = retry_after_delay
-                else:
-                    delay = self._backoff_seconds[attempt - 1]
-                logger.warning(
-                    "Retrying Fitbit fetch for request %s (attempt %s/%s) in %.3fs after error: %s",
-                    request_id,
-                    attempt,
-                    max_retries + 1,
-                    delay,
-                    exc,
-                )
-                self._sleep(delay)
-
-    def _call_fitbit_with_timeout(
-        self,
-        *,
-        user_id: str,
-        date_iso: str,
-        night_date_iso: str,
-        source_timezone: str,
-    ) -> dict[str, Any]:
-        executor: ThreadPoolExecutor | None = None
-        timed_out = False
         try:
-            executor = ThreadPoolExecutor(max_workers=1)
-            fetch_for_date = getattr(self._fitbit_client, "fetch_user_data_for_date", None)
-            if callable(fetch_for_date):
-                future: Future[dict[str, Any]] = executor.submit(
-                    self._call_fetch_for_date_compat,
-                    fetch_for_date=fetch_for_date,
-                    user_id=user_id,
-                    date_iso=date_iso,
-                    night_date_iso=night_date_iso,
-                    source_timezone=source_timezone,
-                )
-            else:
-                future = executor.submit(
-                    self._fitbit_client.fetch_user_data,
-                    user_id=user_id,
-                )
-            return future.result(timeout=self._timeout_seconds)
-        except FuturesTimeoutError as exc:
-            timed_out = True
-            if executor is not None:
-                executor.shutdown(wait=False, cancel_futures=True)
-            raise FitbitTimeoutError(
-                f"Timed out while fetching Fitbit data for user {user_id}."
-            ) from exc
-        finally:
-            if executor is not None and not timed_out:
-                executor.shutdown(wait=True, cancel_futures=False)
+            return self._call_fitbit_fetch(
+                user_id=user_id,
+                date_iso=date_iso,
+                night_date_iso=night_date_iso,
+                source_timezone=source_timezone,
+            )
+        except Exception as exc:
+            logger.error("Fitbit fetch failed for request %s: %s", request_id, exc)
+            raise
 
     def _extract_feature_payload(
         self,
@@ -371,13 +298,29 @@ class RequestFulfillmentService:
                 )
         return payload
 
-    @staticmethod
-    def _is_retryable_fitbit_error(exc: Exception) -> bool:
-        if isinstance(exc, ConnectionError | TimeoutError | FitbitTimeoutError):
-            return True
-
-        status_code = getattr(exc, "status_code", None)
-        return isinstance(status_code, int) and (status_code == 429 or 500 <= status_code < 600)
+    def _call_fitbit_fetch(
+        self,
+        *,
+        user_id: str,
+        date_iso: str,
+        night_date_iso: str,
+        source_timezone: str,
+    ) -> dict[str, Any]:
+        fetch_for_date = getattr(self._fitbit_client, "fetch_user_data_for_date", None)
+        if callable(fetch_for_date):
+            try:
+                return fetch_for_date(
+                    user_id=user_id,
+                    date_iso=date_iso,
+                    night_date_iso=night_date_iso,
+                    source_timezone=source_timezone,
+                )
+            except TypeError:
+                return fetch_for_date(
+                    user_id=user_id,
+                    date_iso=date_iso,
+                )
+        return self._fitbit_client.fetch_user_data(user_id=user_id)
 
     @staticmethod
     def _extract_client_features(request) -> dict[str, Any]:
@@ -480,28 +423,6 @@ class RequestFulfillmentService:
                 user_id,
                 date_iso,
                 ", ".join(sorted(missing_signals)),
-            )
-
-    @staticmethod
-    def _call_fetch_for_date_compat(
-        *,
-        fetch_for_date,
-        user_id: str,
-        date_iso: str,
-        night_date_iso: str,
-        source_timezone: str,
-    ) -> dict[str, Any]:
-        try:
-            return fetch_for_date(
-                user_id=user_id,
-                date_iso=date_iso,
-                night_date_iso=night_date_iso,
-                source_timezone=source_timezone,
-            )
-        except TypeError:
-            return fetch_for_date(
-                user_id=user_id,
-                date_iso=date_iso,
             )
 
     def _fetch_latest_exercise_for_request(

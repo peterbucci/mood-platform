@@ -119,8 +119,6 @@ class FitbitSignalPullClient:
                     token_service=token_service,
                     http_client=http_client,
                     min_fetch_interval_seconds=self._settings.FITBIT_MIN_FETCH_INTERVAL_SECONDS,
-                    max_retries=self._settings.FITBIT_MAX_RETRIES,
-                    backoff_base_seconds=self._settings.FITBIT_BACKOFF_BASE_SECONDS,
                 )
 
                 if token_service.is_reauth_required(user_id=user_uuid):
@@ -217,9 +215,9 @@ class FitbitSignalPullClient:
                         end_date_iso=night_anchor_iso,
                     ),
                 )
-                breathing_rate_all = fetch_signal(
-                    signal_name="breathing_rate_all",
-                    fetch_fn=lambda: api_client.fetch_breathing_rate_all(
+                breathing_rate = fetch_signal(
+                    signal_name="breathing_rate",
+                    fetch_fn=lambda: api_client.fetch_breathing_rate(
                         user_id=user_uuid,
                         date_iso=night_anchor_iso,
                     ),
@@ -230,6 +228,13 @@ class FitbitSignalPullClient:
                         user_id=user_uuid,
                         start_date_iso=range_start_iso,
                         end_date_iso=night_anchor_iso,
+                    ),
+                )
+                breathing_rate_all = fetch_signal(
+                    signal_name="breathing_rate_all",
+                    fetch_fn=lambda: api_client.fetch_breathing_rate_all(
+                        user_id=user_uuid,
+                        date_iso=night_anchor_iso,
                     ),
                 )
                 spo2_range = fetch_signal(
@@ -282,7 +287,7 @@ class FitbitSignalPullClient:
             "heart": heart_7d,
             "sleep": sleep_range,
             "hrv": hrv,
-            "breathing_rate": breathing_rate_all,
+            "breathing_rate": breathing_rate,
             "spo2": spo2,
             "temp": temp,
             "nutrition": nutrition,
@@ -320,8 +325,6 @@ class FitbitSignalPullClient:
                     token_service=token_service,
                     http_client=http_client,
                     min_fetch_interval_seconds=self._settings.FITBIT_MIN_FETCH_INTERVAL_SECONDS,
-                    max_retries=self._settings.FITBIT_MAX_RETRIES,
-                    backoff_base_seconds=self._settings.FITBIT_BACKOFF_BASE_SECONDS,
                 )
                 if token_service.is_reauth_required(user_id=user_uuid):
                     return _missing_signal(reason="needs_reauth")
