@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
+import type { AppStateStatus } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 
 import FitbitConnectionCard from "../components/fitbit/FitbitConnectionCard";
 import ErrorState from "../components/states/ErrorState";
@@ -10,12 +12,16 @@ import type { FitbitConnectionStatus } from "../types/fitbit";
 type ScreenState = "loading" | "connected" | "disconnected" | "error";
 
 const DEFAULT_ERROR_MESSAGE = "We could not load your Fitbit connection status.";
+const DEFAULT_APP_STATE: AppStateStatus = "active";
 
 export default function SettingsScreen() {
   const [screenState, setScreenState] = useState<ScreenState>("loading");
   const [status, setStatus] = useState<FitbitConnectionStatus | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>(DEFAULT_ERROR_MESSAGE);
   const [isActionLoading, setIsActionLoading] = useState(false);
+  const appStateRef = useRef<AppStateStatus>(
+    typeof AppState.currentState === "string" ? AppState.currentState : DEFAULT_APP_STATE
+  );
 
   const loadStatus = useCallback(async () => {
     setScreenState("loading");
@@ -33,6 +39,29 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     void loadStatus();
+  }, [loadStatus]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadStatus();
+    }, [loadStatus])
+  );
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      const previousState =
+        typeof appStateRef.current === "string" ? appStateRef.current : DEFAULT_APP_STATE;
+      const wasInBackground = /inactive|background/.test(previousState);
+      appStateRef.current = nextState;
+      if (wasInBackground && nextState === "active") {
+        void loadStatus();
+      }
+    });
+    return () => {
+      if (subscription && typeof subscription.remove === "function") {
+        subscription.remove();
+      }
+    };
   }, [loadStatus]);
 
   const handleConnect = useCallback(async () => {

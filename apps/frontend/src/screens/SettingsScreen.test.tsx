@@ -1,7 +1,13 @@
-import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
+import { AppState } from "react-native";
 
 import { getFitbitStatus, startFitbitOAuth, unlinkFitbit } from "../api/fitbit";
 import SettingsScreen from "./SettingsScreen";
+
+jest.mock("@react-navigation/native", () => ({
+  ...jest.requireActual("@react-navigation/native"),
+  useFocusEffect: jest.fn()
+}));
 
 jest.mock("../api/fitbit");
 
@@ -97,5 +103,37 @@ describe("SettingsScreen", () => {
     await waitFor(() => {
       expect(mockedUnlinkFitbit).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("reloads status when app returns to active state", async () => {
+    let appStateCallback: ((nextState: string) => void) | null = null;
+
+    const addEventListenerSpy = jest
+      .spyOn(AppState, "addEventListener")
+      .mockImplementation((_eventType, callback) => {
+        appStateCallback = callback as unknown as (nextState: string) => void;
+        return { remove: jest.fn() } as { remove: () => void };
+      });
+
+    mockedGetFitbitStatus
+      .mockResolvedValueOnce({ connected: false })
+      .mockResolvedValueOnce({ connected: true, fitbitUserId: "fitbit-user-777" });
+
+    const { getByText } = render(<SettingsScreen />);
+
+    await waitFor(() => {
+      expect(getByText("Fitbit not connected")).toBeTruthy();
+    });
+
+    act(() => {
+      appStateCallback?.("background");
+      appStateCallback?.("active");
+    });
+
+    await waitFor(() => {
+      expect(mockedGetFitbitStatus).toHaveBeenCalledTimes(2);
+    });
+
+    addEventListenerSpy.mockRestore();
   });
 });
