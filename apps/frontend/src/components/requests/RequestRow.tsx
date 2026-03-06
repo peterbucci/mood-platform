@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from "react-native";
 
 import type { FeatureRequestRecord } from "../../types/requests";
+import StatusBadge from "./StatusBadge";
 
 type RequestRowProps = {
   request: FeatureRequestRecord;
@@ -14,25 +15,14 @@ function formatTimestamp(createdAt: number): string {
   return parsed.toLocaleString();
 }
 
-function statusColor(status: FeatureRequestRecord["status"]): string {
-  if (status === "fulfilled") {
-    return "#065f46";
-  }
-  if (status === "canceled") {
-    return "#991b1b";
-  }
-  return "#9a3412";
-}
-
 export default function RequestRow({ request }: RequestRowProps) {
   return (
     <View style={styles.row}>
       <Text style={styles.requestId}>Request ID: {request.id}</Text>
-      <Text style={[styles.status, { color: statusColor(request.status) }]}>
-        Status: {request.status}
-      </Text>
+      <StatusBadge status={request.status} />
       <Text style={styles.meta}>Created: {formatTimestamp(request.createdAt)}</Text>
       <Text style={styles.meta}>Source: {request.source}</Text>
+      {request.featureId ? <Text style={styles.meta}>Feature ID: {request.featureId}</Text> : null}
     </View>
   );
 }
@@ -49,10 +39,6 @@ const styles = StyleSheet.create({
   requestId: {
     color: "#111827",
     fontSize: 14,
-    fontWeight: "700"
-  },
-  status: {
-    fontSize: 13,
     fontWeight: "700"
   },
   meta: {
