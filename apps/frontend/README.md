@@ -1,13 +1,31 @@
 # Frontend App
 
-This directory contains the frontend client application (planned Expo React Native app).
+This directory contains the Expo React Native frontend for Mood Platform.
 
-## Responsibilities
+## FE-01 App Shell
 
-- mood capture UI
-- offline-first local entry handling
-- sync with backend APIs
+Implemented foundation:
 
-## Status
+- Expo app setup
+- React Navigation stack routing
+- Shared app layout (header, navigation, page container)
+- Placeholder pages for:
+  - `/dashboard`
+  - `/requests`
+  - `/features`
+  - `/features/:id`
+  - `/settings`
+  - fallback `NotFound` route
+- Shared UI state components:
+  - `LoadingState`
+  - `EmptyState`
+  - `ErrorState`
 
-Scaffold placeholder for Epic E1 foundations.
+## Run
+
+From repo root:
+
+```bash
+npm install
+npm run --workspace apps/frontend start
+```
