@@ -21,6 +21,34 @@ Implemented foundation:
   - `EmptyState`
   - `ErrorState`
 
+## FE-02 Fitbit Connection Status (Settings)
+
+Implemented:
+
+- `Settings` screen now loads Fitbit OAuth connection status from backend
+- Supported UI states:
+  - loading
+  - disconnected
+  - connected
+  - error
+- Connect action opens Fitbit OAuth start flow
+- Disconnect action calls backend unlink endpoint
+- Refresh action re-checks status
+- Reusable `FitbitConnectionCard` component for connected/disconnected states
+- Frontend tests for status rendering and connect/disconnect actions
+
+Backend endpoints used:
+
+- `GET /fitbit/oauth/status`
+- `GET /fitbit/oauth/start`
+- `POST /fitbit/oauth/unlink`
+
+Set API base URL (recommended for device testing):
+
+```bash
+EXPO_PUBLIC_API_BASE_URL=http://localhost:8000
+```
+
 ## Run
 
 From repo root:
