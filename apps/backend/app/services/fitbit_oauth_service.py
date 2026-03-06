@@ -41,6 +41,16 @@ class FitbitTokenPayload:
     user_id: str
 
 
+@dataclass(frozen=True)
+class FitbitOAuthStatus:
+    connected: bool
+    expires_at: datetime | None
+    fitbit_user_id: str | None = None
+    scopes: list[str] | None = None
+    last_sync_at: datetime | None = None
+    message: str | None = None
+
+
 class FitbitOAuthService:
     def __init__(
         self,
@@ -217,18 +227,39 @@ class FitbitOAuthService:
         )
         raise FitbitOAuthExchangeError("Failed to register Fitbit webhook subscription.")
 
-    def get_status(self, *, user_id: uuid.UUID) -> tuple[bool, datetime | None]:
+    def get_status(self, *, user_id: uuid.UUID) -> FitbitOAuthStatus:
         try:
             stored_token = self._token_service.get_stored_token(user_id=user_id)
         except FitbitTokenRefreshError as exc:
             raise FitbitOAuthExchangeError("Failed to load OAuth connection status.") from exc
 
         if stored_token is None:
-            return False, None
-        return True, stored_token.expires_at
+            return FitbitOAuthStatus(
+                connected=False,
+                expires_at=None,
+                fitbit_user_id=None,
+                scopes=None,
+                last_sync_at=None,
+                message="Fitbit account is not connected.",
+            )
+        scope_values = _split_scope_values(stored_token.scope)
+        return FitbitOAuthStatus(
+            connected=True,
+            expires_at=stored_token.expires_at,
+            fitbit_user_id=stored_token.fitbit_user_id,
+            scopes=scope_values if scope_values else None,
+            last_sync_at=stored_token.updated_at,
+            message="Fitbit account is connected.",
+        )
 
     def unlink(self, *, user_id: uuid.UUID) -> bool:
         try:
             return self._token_service.delete_stored_token(user_id=user_id)
         except FitbitTokenRefreshError as exc:
             raise FitbitOAuthExchangeError("Failed to unlink OAuth connection.") from exc
+
+
+def _split_scope_values(raw_scope: str | None) -> list[str]:
+    if not isinstance(raw_scope, str):
+        return []
+    return [scope for scope in raw_scope.split() if scope]

@@ -131,7 +131,14 @@ def test_fitbit_oauth_status_reports_connection_state(monkeypatch) -> None:
         with TestClient(app) as client:
             initial_status = client.get("/fitbit/oauth/status")
             assert initial_status.status_code == 200
-            assert initial_status.json() == {"connected": False, "expiresAt": None}
+            assert initial_status.json() == {
+                "connected": False,
+                "expiresAt": None,
+                "fitbitUserId": None,
+                "scopes": None,
+                "lastSyncAt": None,
+                "message": "Fitbit account is not connected.",
+            }
 
             start_response = client.get("/fitbit/oauth/start", follow_redirects=False)
             state = parse_qs(urlparse(start_response.headers["location"]).query)["state"][0]
@@ -147,6 +154,10 @@ def test_fitbit_oauth_status_reports_connection_state(monkeypatch) -> None:
         connected_payload = connected_status.json()
         assert connected_payload["connected"] is True
         assert connected_payload["expiresAt"] is not None
+        assert connected_payload["fitbitUserId"] == "fitbit-user-2"
+        assert connected_payload["scopes"] == ["sleep", "heartrate", "activity", "profile"]
+        assert connected_payload["lastSyncAt"] is not None
+        assert connected_payload["message"] == "Fitbit account is connected."
         db_session._session_factory.cache_clear()
 
 
@@ -182,7 +193,14 @@ def test_fitbit_oauth_unlink_clears_connection(monkeypatch) -> None:
         assert unlink_response.status_code == 200
         assert unlink_response.json() == {"success": True}
         assert status_response.status_code == 200
-        assert status_response.json() == {"connected": False, "expiresAt": None}
+        assert status_response.json() == {
+            "connected": False,
+            "expiresAt": None,
+            "fitbitUserId": None,
+            "scopes": None,
+            "lastSyncAt": None,
+            "message": "Fitbit account is not connected.",
+        }
 
         with psycopg.connect(database_url) as connection:
             with connection.cursor() as cursor:

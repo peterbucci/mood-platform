@@ -67,7 +67,7 @@ def fitbit_oauth_status(
     fitbit_oauth_service: Annotated[FitbitOAuthService, Depends(get_fitbit_oauth_service)],
 ) -> FitbitOAuthStatusResponse:
     try:
-        connected, expires_at = fitbit_oauth_service.get_status(user_id=get_owner_user_id())
+        status_payload = fitbit_oauth_service.get_status(user_id=get_owner_user_id())
     except FitbitOAuthExchangeError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -75,8 +75,12 @@ def fitbit_oauth_status(
         ) from exc
 
     return FitbitOAuthStatusResponse(
-        connected=connected,
-        expiresAt=expires_at,
+        connected=status_payload.connected,
+        expiresAt=status_payload.expires_at,
+        fitbitUserId=status_payload.fitbit_user_id,
+        scopes=status_payload.scopes,
+        lastSyncAt=status_payload.last_sync_at,
+        message=status_payload.message,
     )
 
 
