@@ -1,5 +1,5 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
-import { AppState } from "react-native";
+import { Alert, AppState } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 
 import { getFitbitStatus, startFitbitOAuth, unlinkFitbit } from "../api/fitbit";
@@ -37,12 +37,13 @@ describe("SettingsScreen", () => {
       expect(getByText("Fitbit not connected")).toBeTruthy();
     });
     expect(getByText("Connect Fitbit")).toBeTruthy();
+    expect(getByText("Disconnected")).toBeTruthy();
   });
 
   it("renders connected state when backend reports connected", async () => {
     mockedGetFitbitStatus.mockResolvedValue({
       connected: true,
-      expiresAt: "2026-03-06T10:00:00Z",
+      expiresAt: "2026-03-08T10:00:00Z",
       fitbitUserId: "fitbit-user-123",
       scopes: ["sleep", "heartrate"]
     });
@@ -52,8 +53,9 @@ describe("SettingsScreen", () => {
     await waitFor(() => {
       expect(getByText("Fitbit connected")).toBeTruthy();
     });
-    expect(getByText("Fitbit user id: fitbit-user-123")).toBeTruthy();
-    expect(getByText("Scopes: sleep, heartrate")).toBeTruthy();
+    expect(getByText("fitbit-user-123")).toBeTruthy();
+    expect(getByText("Permissions")).toBeTruthy();
+    expect(getByText("Sleep, Heart Rate")).toBeTruthy();
   });
 
   it("renders error state on API failure", async () => {
@@ -86,7 +88,7 @@ describe("SettingsScreen", () => {
     });
   });
 
-  it("calls unlink when disconnect is tapped", async () => {
+  it("calls unlink after disconnect is confirmed", async () => {
     mockedGetFitbitStatus
       .mockResolvedValueOnce({
         connected: true,
@@ -102,11 +104,30 @@ describe("SettingsScreen", () => {
       expect(getByText("Disconnect Fitbit")).toBeTruthy();
     });
 
+    const alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+
     fireEvent.press(getByText("Disconnect Fitbit"));
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      "Disconnect Fitbit?",
+      "Disconnecting will stop new feature captures from Fitbit.",
+      expect.any(Array)
+    );
+
+    const disconnectButtons = alertSpy.mock.calls[0]?.[2];
+    const disconnectAction = Array.isArray(disconnectButtons)
+      ? disconnectButtons.find((button) => button.text === "Disconnect")
+      : null;
+
+    act(() => {
+      disconnectAction?.onPress?.();
+    });
 
     await waitFor(() => {
       expect(mockedUnlinkFitbit).toHaveBeenCalledTimes(1);
     });
+
+    alertSpy.mockRestore();
   });
 
   it("reloads status when app returns to active state", async () => {
