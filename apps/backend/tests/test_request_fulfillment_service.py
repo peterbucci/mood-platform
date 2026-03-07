@@ -542,6 +542,68 @@ def test_fulfillment_handles_malformed_signal_payload_with_partial_note() -> Non
         assert "partial_spo2" in parsed_payload["notes"]
 
 
+def test_fulfillment_creates_label_from_request_client_mood() -> None:
+    user_id = "00000000-0000-0000-0000-00000000ee10"
+    request_id = "req_auto_label_on_fulfill"
+
+    with _temporary_database() as database_url:
+        _run_alembic_upgrade(database_url=database_url)
+        _insert_request(
+            database_url=database_url,
+            request_id=request_id,
+            user_id=user_id,
+            created_at=1700000300,
+            status="pending",
+            source="phone",
+            feature_id=None,
+            client_features_json=json.dumps(
+                {
+                    "moodCategory": "calm",
+                    "moodEmotion": "Relaxed",
+                }
+            ),
+        )
+
+        fitbit_client = FakeFitbitClient({user_id: [{"steps": {"count": 1400}}]})
+
+        with _sqlalchemy_session(database_url) as session:
+            service = RequestFulfillmentService(
+                repository=FeatureRequestRepository(session=session),
+                fitbit_client=fitbit_client,
+            )
+            outcome = service.process_request(request_id)
+
+        assert outcome == "fulfilled"
+        with psycopg.connect(database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT "featureId", status
+                    FROM requests
+                    WHERE id = %s
+                    """,
+                    (request_id,),
+                )
+                request_row = cursor.fetchone()
+                assert request_row is not None
+                feature_id = request_row[0]
+                assert request_row[1] == "fulfilled"
+                assert feature_id is not None
+
+                cursor.execute(
+                    """
+                    SELECT "featureId", "requestId", category, "emotionWord"
+                    FROM labels
+                    WHERE "requestId" = %s
+                    """,
+                    (request_id,),
+                )
+                labels = cursor.fetchall()
+
+        assert len(labels) == 1
+        assert labels[0] == (feature_id, request_id, "calm", "Relaxed")
+
+
 class _temporary_database:
     def __enter__(self) -> str:
         base_database_url = os.getenv("DATABASE_URL", "").strip()
@@ -632,14 +694,31 @@ def _insert_request(
     status: str,
     source: str,
     feature_id: str | None,
+    client_features_json: str | None = None,
 ) -> None:
     with psycopg.connect(database_url) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO requests (id, "userId", "createdAt", status, source, "featureId")
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO requests (
+                    id,
+                    "userId",
+                    "createdAt",
+                    status,
+                    source,
+                    "featureId",
+                    "clientFeatures"
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
-                (request_id, user_id, created_at, status, source, feature_id),
+                (
+                    request_id,
+                    user_id,
+                    created_at,
+                    status,
+                    source,
+                    feature_id,
+                    client_features_json,
+                ),
             )
         connection.commit()

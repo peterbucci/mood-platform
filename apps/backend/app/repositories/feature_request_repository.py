@@ -9,12 +9,13 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db.models import Feature, FeatureRequest
+from app.db.models import Feature, FeatureRequest, Label
 
 PENDING_STATUS = "pending"
 FULFILLED_STATUS = "fulfilled"
 CANCELED_STATUS = "canceled"
 PHONE_SOURCE = "phone"
+MOOD_LABEL_CATEGORIES = {"energized", "calm", "stressed", "tired"}
 
 
 class FeatureRequestWriteError(Exception):
@@ -230,6 +231,8 @@ class FeatureRequestRepository:
         source_timezone: str | None = None,
         window_start: datetime | None = None,
         window_end: datetime | None = None,
+        mood_category: str | None = None,
+        mood_emotion: str | None = None,
     ) -> str | None:
         feature_id = str(uuid.uuid4())
         created_at = int(datetime.now(tz=UTC).timestamp())
@@ -266,6 +269,20 @@ class FeatureRequestRepository:
             if update_result.rowcount != 1:
                 self._session.rollback()
                 return None
+
+            normalized_category = _normalize_mood_category(mood_category)
+            normalized_emotion = _normalize_mood_emotion(mood_emotion)
+            if normalized_category is not None and normalized_emotion is not None:
+                self._session.add(
+                    Label(
+                        user_id=user_id,
+                        feature_id=feature_id,
+                        request_id=request_id,
+                        label=None,
+                        emotion_word=normalized_emotion,
+                        category=normalized_category,
+                    )
+                )
 
             self._session.commit()
             return feature_id
@@ -315,3 +332,21 @@ class FeatureRequestRepository:
             FeatureRequest.next_attempt_at.is_(None),
             FeatureRequest.next_attempt_at <= now_ts,
         )
+
+
+def _normalize_mood_category(value: str | None) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if normalized not in MOOD_LABEL_CATEGORIES:
+        return None
+    return normalized
+
+
+def _normalize_mood_emotion(value: str | None) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    return normalized

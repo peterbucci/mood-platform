@@ -38,6 +38,12 @@ class TimezoneResolution:
     notes: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class MoodSelection:
+    category: str
+    emotion: str
+
+
 class RequestFulfillmentService:
     def __init__(
         self,
@@ -193,6 +199,7 @@ class RequestFulfillmentService:
                 client_features=client_features,
                 request_context=anchor_ctx,
             )
+            mood_selection = self._extract_mood_selection(client_features=client_features)
             if not self._is_request_pending_for_persist(
                 request_id=request.id,
                 user_id=request.user_id,
@@ -202,14 +209,14 @@ class RequestFulfillmentService:
                     request.id,
                 )
                 return "skipped"
-            feature_id = self._repository.fulfill_request_if_pending(
+            feature_id = self._fulfill_request_if_pending(
                 request_id=request.id,
                 user_id=request.user_id,
-                feature_source=self._feature_source,
                 feature_payload=feature_payload,
                 source_timezone=anchor_ctx.source_timezone,
                 window_start=anchor_ctx.night_window_start_utc,
                 window_end=anchor_ctx.night_window_end_utc,
+                mood_selection=mood_selection,
             )
             if feature_id is None:
                 logger.info(
@@ -250,6 +257,46 @@ class RequestFulfillmentService:
             return False
         return request.status == PENDING_STATUS and request.feature_id is None
 
+    def _fulfill_request_if_pending(
+        self,
+        *,
+        request_id: str,
+        user_id: str,
+        feature_payload: dict[str, Any],
+        source_timezone: str,
+        window_start: datetime,
+        window_end: datetime,
+        mood_selection: MoodSelection | None,
+    ) -> str | None:
+        fulfill = self._repository.fulfill_request_if_pending
+        if mood_selection is not None:
+            try:
+                return fulfill(
+                    request_id=request_id,
+                    user_id=user_id,
+                    feature_source=self._feature_source,
+                    feature_payload=feature_payload,
+                    source_timezone=source_timezone,
+                    window_start=window_start,
+                    window_end=window_end,
+                    mood_category=mood_selection.category,
+                    mood_emotion=mood_selection.emotion,
+                )
+            except TypeError:
+                logger.debug(
+                    "Repository fulfill_request_if_pending does not accept mood label kwargs."
+                )
+
+        return fulfill(
+            request_id=request_id,
+            user_id=user_id,
+            feature_source=self._feature_source,
+            feature_payload=feature_payload,
+            source_timezone=source_timezone,
+            window_start=window_start,
+            window_end=window_end,
+        )
+
     def _fetch_fitbit_data_with_retry(
         self,
         *,
@@ -269,6 +316,24 @@ class RequestFulfillmentService:
         except Exception as exc:
             logger.error("Fitbit fetch failed for request %s: %s", request_id, exc)
             raise
+
+    @staticmethod
+    def _extract_mood_selection(*, client_features: dict[str, Any]) -> MoodSelection | None:
+        category_raw = client_features.get("moodCategory")
+        if not isinstance(category_raw, str):
+            return None
+        category = category_raw.strip().lower()
+        if category not in {"energized", "calm", "stressed", "tired"}:
+            return None
+
+        emotion_raw = client_features.get("moodEmotion")
+        if not isinstance(emotion_raw, str):
+            return None
+        emotion = emotion_raw.strip()
+        if not emotion:
+            return None
+
+        return MoodSelection(category=category, emotion=emotion)
 
     def _extract_feature_payload(
         self,
