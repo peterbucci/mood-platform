@@ -3,6 +3,7 @@ import { useRoute } from "@react-navigation/native";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { colors, spacing } from "../../theme";
 import Header from "./Header";
 import Navigation from "./Navigation";
 
@@ -30,21 +31,22 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
 const styles = StyleSheet.create({
   root: {
-    backgroundColor: "#f9fafb",
+    backgroundColor: colors.background,
     flex: 1
   },
   headerArea: {
-    backgroundColor: "#ffffff",
-    paddingHorizontal: 20,
-    paddingTop: 8
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.sm
   },
   pageContainer: {
     alignItems: "center",
-    padding: 20
+    padding: spacing.xl,
+    paddingBottom: spacing.xxl
   },
   pageContent: {
     maxWidth: 900,
-    rowGap: 12,
+    rowGap: spacing.md,
     width: "100%"
   }
 });

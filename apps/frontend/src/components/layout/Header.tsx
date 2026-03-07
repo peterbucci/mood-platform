@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
+import { colors, spacing, typography } from "../../theme";
+
 type HeaderProps = {
   appName?: string;
   currentRouteName?: string;
@@ -25,21 +27,20 @@ export default function Header({
 
 const styles = StyleSheet.create({
   container: {
-    borderBottomColor: "#d1d5db",
+    borderBottomColor: colors.borderStrong,
     borderBottomWidth: 1,
-    gap: 10,
-    paddingBottom: 12
+    gap: spacing.sm,
+    paddingBottom: spacing.md
   },
   titleBlock: {
-    gap: 2
+    gap: spacing.xxs
   },
   title: {
-    color: "#111827",
-    fontSize: 24,
-    fontWeight: "700"
+    ...typography.title,
+    color: colors.textPrimary
   },
   subtitle: {
-    color: "#6b7280",
-    fontSize: 14
+    ...typography.body,
+    color: colors.textMuted
   }
 });
