@@ -1,4 +1,5 @@
 export type FeatureData = Record<string, unknown>;
+export type FeatureDataMap = FeatureData;
 
 export type FeatureRecord = {
   id: string;
