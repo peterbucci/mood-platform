@@ -95,10 +95,22 @@ class FeatureService:
         if not isinstance(parsed_data, dict):
             raise FeatureDataParseError(f"Feature {feature.id} data must deserialize to an object.")
 
+        latest_label = self._repository.get_latest_label_for_feature(
+            user_id=str(self._owner_user_id),
+            feature_id=feature.id,
+        )
+        serialized_label: dict[str, str] | None = None
+        if latest_label is not None:
+            serialized_label = {
+                "category": latest_label.category,
+                "emotionWord": latest_label.emotion_word,
+            }
+
         return {
             "id": feature.id,
             "userId": feature.user_id,
             "createdAt": feature.created_at,
             "source": feature.source,
             "data": parsed_data,
+            "label": serialized_label,
         }
