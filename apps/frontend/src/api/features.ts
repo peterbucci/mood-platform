@@ -6,6 +6,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function pickString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function toFeatureMoodLabel(payload: unknown): FeatureRecord["label"] {
+  if (payload === undefined) {
+    return undefined;
+  }
+  if (payload === null) {
+    return null;
+  }
+  if (!isRecord(payload)) {
+    return { category: null, emotion: null };
+  }
+
+  const category = pickString(payload.category);
+  const emotion =
+    pickString(payload.emotion) ??
+    pickString(payload.emotionWord) ??
+    pickString(payload.emotion_word);
+
+  return {
+    category,
+    emotion
+  };
+}
+
 function toFeatureRecord(payload: unknown): FeatureRecord | null {
   if (!isRecord(payload)) {
     return null;
@@ -26,6 +53,7 @@ function toFeatureRecord(payload: unknown): FeatureRecord | null {
     createdAt: payload.createdAt,
     source: payload.source,
     data,
+    label: toFeatureMoodLabel(payload.label ?? payload.moodLabel ?? payload.mood_label),
     summaryMetadata:
       isRecord(payload.summaryMetadata)
         ? payload.summaryMetadata
