@@ -1,3 +1,5 @@
+import type { MoodLabelValue } from "./mood";
+
 export type FeatureData = Record<string, unknown>;
 export type FeatureDataMap = FeatureData;
 
@@ -7,6 +9,7 @@ export type FeatureRecord = {
   createdAt: number;
   source: string;
   data: FeatureData;
+  label?: MoodLabelValue;
   summaryMetadata?: Record<string, unknown> | null;
   extractorVersion?: string | null;
   windowStart?: string | null;
