@@ -1,12 +1,14 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import { AppState } from "react-native";
+import { useIsFocused } from "@react-navigation/native";
 
 import { getFitbitStatus, startFitbitOAuth, unlinkFitbit } from "../api/fitbit";
 import SettingsScreen from "./SettingsScreen";
 
 jest.mock("@react-navigation/native", () => ({
   ...jest.requireActual("@react-navigation/native"),
-  useFocusEffect: jest.fn()
+  useFocusEffect: jest.fn(),
+  useIsFocused: jest.fn()
 }));
 
 jest.mock("../api/fitbit");
@@ -14,10 +16,12 @@ jest.mock("../api/fitbit");
 const mockedGetFitbitStatus = jest.mocked(getFitbitStatus);
 const mockedStartFitbitOAuth = jest.mocked(startFitbitOAuth);
 const mockedUnlinkFitbit = jest.mocked(unlinkFitbit);
+const mockedUseIsFocused = jest.mocked(useIsFocused);
 
 describe("SettingsScreen", () => {
   beforeEach(() => {
     jest.resetAllMocks();
+    mockedUseIsFocused.mockReturnValue(true);
     mockedStartFitbitOAuth.mockResolvedValue();
     mockedUnlinkFitbit.mockResolvedValue({ success: true });
   });

@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import AppLayout from "../components/layout/AppLayout";
+import { AppRefreshProvider } from "../hooks/useAppRefresh";
 import DashboardPage from "../pages/DashboardPage";
 import FeatureDetailPage from "../pages/FeatureDetailPage";
 import FeatureMoodLabelPage from "../pages/FeatureMoodLabelPage";
@@ -60,17 +61,19 @@ const NotFoundScreen = withAppLayout(NotFoundPage);
 export default function AppRouter() {
   return (
     <SafeAreaProvider>
-      <NavigationContainer linking={linking}>
-        <Stack.Navigator initialRouteName="Dashboard" screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="Dashboard" component={DashboardScreen} />
-          <Stack.Screen name="Requests" component={RequestsScreen} />
-          <Stack.Screen name="Features" component={FeaturesScreen} />
-          <Stack.Screen name="FeatureDetail" component={FeatureDetailScreen} />
-          <Stack.Screen name="FeatureMoodLabel" component={FeatureMoodLabelScreen} />
-          <Stack.Screen name="Settings" component={SettingsScreen} />
-          <Stack.Screen name="NotFound" component={NotFoundScreen} />
-        </Stack.Navigator>
-      </NavigationContainer>
+      <AppRefreshProvider>
+        <NavigationContainer linking={linking}>
+          <Stack.Navigator initialRouteName="Dashboard" screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="Dashboard" component={DashboardScreen} />
+            <Stack.Screen name="Requests" component={RequestsScreen} />
+            <Stack.Screen name="Features" component={FeaturesScreen} />
+            <Stack.Screen name="FeatureDetail" component={FeatureDetailScreen} />
+            <Stack.Screen name="FeatureMoodLabel" component={FeatureMoodLabelScreen} />
+            <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="NotFound" component={NotFoundScreen} />
+          </Stack.Navigator>
+        </NavigationContainer>
+      </AppRefreshProvider>
     </SafeAreaProvider>
   );
 }

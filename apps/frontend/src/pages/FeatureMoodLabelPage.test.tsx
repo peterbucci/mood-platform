@@ -1,4 +1,5 @@
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import { useIsFocused } from "@react-navigation/native";
 
 import { getFeatureById, setFeatureLabel } from "../api/features";
 import { createApiError } from "../api/errors";
@@ -7,9 +8,14 @@ import type { FeatureRecord } from "../types/features";
 import FeatureMoodLabelPage from "./FeatureMoodLabelPage";
 
 jest.mock("../api/features");
+jest.mock("@react-navigation/native", () => ({
+  ...jest.requireActual("@react-navigation/native"),
+  useIsFocused: jest.fn()
+}));
 
 const mockedGetFeatureById = jest.mocked(getFeatureById);
 const mockedSetFeatureLabel = jest.mocked(setFeatureLabel);
+const mockedUseIsFocused = jest.mocked(useIsFocused);
 
 const DETAIL_FEATURE: FeatureRecord = {
   createdAt: 1_772_800_000,
@@ -54,6 +60,7 @@ function makeProps(id: string) {
 describe("FeatureMoodLabelPage", () => {
   beforeEach(() => {
     jest.resetAllMocks();
+    mockedUseIsFocused.mockReturnValue(true);
   });
 
   it("loads feature label and saves updates, then goes back", async () => {

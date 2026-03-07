@@ -12,6 +12,7 @@ import LoadingState from "../components/states/LoadingState";
 import AppButton from "../components/ui/AppButton";
 import InfoText from "../components/ui/InfoText";
 import SectionHeader from "../components/ui/SectionHeader";
+import { useAppRefreshListener } from "../hooks/useAppRefresh";
 import { DEFAULT_REQUEST_POLL_INTERVAL_MS, useRequestPolling } from "../hooks/useRequestPolling";
 import type { RootStackParamList } from "../router/AppRouter";
 import { spacing } from "../theme";
@@ -31,7 +32,6 @@ export default function RequestsPage() {
     errorMessage,
     isInitialLoading,
     isPolling,
-    isRefreshing,
     refresh
   } = useRequestPolling({
     enabled: isFocused,
@@ -92,17 +92,16 @@ export default function RequestsPage() {
     [requestMoodById, requests]
   );
 
+  useAppRefreshListener(() => {
+    if (!isFocused) {
+      return;
+    }
+    void refresh();
+  });
+
   return (
     <View style={styles.container}>
       <SectionHeader title="Requests" subtitle="Track feature capture requests and queue progress." />
-      <AppButton
-        label="Refresh"
-        disabled={isInitialLoading || isRefreshing}
-        isLoading={isRefreshing}
-        onPress={refresh}
-        style={styles.inlineButton}
-        variant="neutral"
-      />
       <CreateRequestCard onCreated={handleRequestCreated} />
       <PendingCountCard pendingCount={pendingCount} />
       {isPolling ? (

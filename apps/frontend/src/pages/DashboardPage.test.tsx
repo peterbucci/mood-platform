@@ -1,5 +1,5 @@
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
-import { useNavigation } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 
 import { getLatestFeature } from "../api/features";
 import type { FeatureRecord } from "../types/features";
@@ -8,10 +8,12 @@ import DashboardPage from "./DashboardPage";
 jest.mock("../api/features");
 jest.mock("@react-navigation/native", () => ({
   ...jest.requireActual("@react-navigation/native"),
+  useIsFocused: jest.fn(),
   useNavigation: jest.fn()
 }));
 
 const mockedGetLatestFeature = jest.mocked(getLatestFeature);
+const mockedUseIsFocused = jest.mocked(useIsFocused);
 const mockedUseNavigation = jest.mocked(useNavigation);
 
 const LATEST_FEATURE: FeatureRecord = {
@@ -58,6 +60,7 @@ const LATEST_FEATURE: FeatureRecord = {
 describe("DashboardPage", () => {
   beforeEach(() => {
     jest.resetAllMocks();
+    mockedUseIsFocused.mockReturnValue(true);
     mockedUseNavigation.mockReturnValue({
       navigate: jest.fn()
     } as never);

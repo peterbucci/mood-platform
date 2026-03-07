@@ -184,26 +184,19 @@ describe("RequestsPage", () => {
     });
   });
 
-  it("refreshes requests and pending count when refresh is tapped", async () => {
-    mockedGetRequests
-      .mockResolvedValueOnce([PENDING_REQUEST])
-      .mockResolvedValueOnce([FULFILLED_REQUEST]);
-    mockedGetPendingRequestCount.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+  it("loads requests when the screen becomes focused", async () => {
+    mockedUseIsFocused.mockReturnValue(false);
+    const { rerender } = render(<RequestsPage />);
 
-    const { getByText, getByTestId } = render(<RequestsPage />);
+    expect(mockedGetRequests).not.toHaveBeenCalled();
+    expect(mockedGetPendingRequestCount).not.toHaveBeenCalled();
 
-    await waitFor(() => {
-      expect(getByText("Pending")).toBeTruthy();
-      expect(getByTestId("pending-count-value").props.children).toBe(1);
-    });
-
-    fireEvent.press(getByText("Refresh"));
+    mockedUseIsFocused.mockReturnValue(true);
+    rerender(<RequestsPage />);
 
     await waitFor(() => {
-      expect(mockedGetRequests).toHaveBeenCalledTimes(2);
-      expect(mockedGetPendingRequestCount).toHaveBeenCalledTimes(2);
-      expect(getByText("Fulfilled")).toBeTruthy();
-      expect(getByTestId("pending-count-value").props.children).toBe(0);
+      expect(mockedGetRequests).toHaveBeenCalledTimes(1);
+      expect(mockedGetPendingRequestCount).toHaveBeenCalledTimes(1);
     });
   });
 

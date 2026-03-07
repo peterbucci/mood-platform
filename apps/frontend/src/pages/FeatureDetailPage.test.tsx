@@ -1,4 +1,5 @@
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import { useIsFocused } from "@react-navigation/native";
 
 import { getFeatureById } from "../api/features";
 import { createApiError } from "../api/errors";
@@ -7,8 +8,13 @@ import type { FeatureRecord } from "../types/features";
 import FeatureDetailPage from "./FeatureDetailPage";
 
 jest.mock("../api/features");
+jest.mock("@react-navigation/native", () => ({
+  ...jest.requireActual("@react-navigation/native"),
+  useIsFocused: jest.fn()
+}));
 
 const mockedGetFeatureById = jest.mocked(getFeatureById);
+const mockedUseIsFocused = jest.mocked(useIsFocused);
 
 const DETAIL_FEATURE: FeatureRecord = {
   createdAt: 1_772_800_000,
@@ -71,6 +77,7 @@ function makeProps(id: string) {
 describe("FeatureDetailPage", () => {
   beforeEach(() => {
     jest.resetAllMocks();
+    mockedUseIsFocused.mockReturnValue(true);
   });
 
   it("loads a feature by id and renders grouped detail with dropdown section navigation", async () => {

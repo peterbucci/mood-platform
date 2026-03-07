@@ -11,7 +11,6 @@ type FitbitConnectionCardProps = {
   isBusy?: boolean;
   onConnect: () => void;
   onDisconnect?: () => void;
-  onRefresh: () => void;
 };
 
 function formatDate(value: string | null | undefined): string {
@@ -29,8 +28,7 @@ export default function FitbitConnectionCard({
   status,
   isBusy = false,
   onConnect,
-  onDisconnect,
-  onRefresh
+  onDisconnect
 }: FitbitConnectionCardProps) {
   if (!status.connected) {
     return (
@@ -62,7 +60,6 @@ export default function FitbitConnectionCard({
         </Text>
       </View>
       <View style={styles.actionRow}>
-        <AppButton label="Refresh Status" onPress={onRefresh} disabled={isBusy} variant="neutral" />
         <AppButton label="Reconnect Fitbit" onPress={onConnect} disabled={isBusy} variant="neutral" />
         {onDisconnect ? (
           <AppButton label="Disconnect Fitbit" onPress={onDisconnect} disabled={isBusy} variant="danger" />

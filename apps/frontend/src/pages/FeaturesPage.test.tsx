@@ -1,5 +1,5 @@
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
-import { useNavigation } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 
 import { getFeatures } from "../api/features";
 import type { FeatureRecord } from "../types/features";
@@ -8,10 +8,12 @@ import FeaturesPage from "./FeaturesPage";
 jest.mock("../api/features");
 jest.mock("@react-navigation/native", () => ({
   ...jest.requireActual("@react-navigation/native"),
+  useIsFocused: jest.fn(),
   useNavigation: jest.fn()
 }));
 
 const mockedGetFeatures = jest.mocked(getFeatures);
+const mockedUseIsFocused = jest.mocked(useIsFocused);
 const mockedUseNavigation = jest.mocked(useNavigation);
 
 const FEATURE_A: FeatureRecord = {
@@ -43,6 +45,7 @@ const FEATURE_B: FeatureRecord = {
 describe("FeaturesPage", () => {
   beforeEach(() => {
     jest.resetAllMocks();
+    mockedUseIsFocused.mockReturnValue(true);
     mockedUseNavigation.mockReturnValue({
       navigate: jest.fn()
     } as never);

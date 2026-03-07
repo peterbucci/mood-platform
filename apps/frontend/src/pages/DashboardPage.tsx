@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigation } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { StyleSheet, View } from "react-native";
 
@@ -12,6 +12,7 @@ import ErrorState from "../components/states/ErrorState";
 import LoadingState from "../components/states/LoadingState";
 import AppButton from "../components/ui/AppButton";
 import SectionHeader from "../components/ui/SectionHeader";
+import { useAppRefreshListener } from "../hooks/useAppRefresh";
 import type { RootStackParamList } from "../router/AppRouter";
 import { spacing } from "../theme";
 import type { FeatureData, FeatureRecord } from "../types/features";
@@ -247,6 +248,7 @@ function extractMetadata(feature: FeatureRecord) {
 
 export default function DashboardPage() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const isFocused = useIsFocused();
   const [viewState, setViewState] = useState<DashboardViewState>("loading");
   const [latestFeature, setLatestFeature] = useState<FeatureRecord | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -274,6 +276,13 @@ export default function DashboardPage() {
   useEffect(() => {
     void loadLatestFeature();
   }, [loadLatestFeature]);
+
+  useAppRefreshListener(() => {
+    if (!isFocused) {
+      return;
+    }
+    void loadLatestFeature();
+  });
 
   const sections = useMemo(
     () => (latestFeature ? buildSections(latestFeature.data) : []),
@@ -318,7 +327,6 @@ export default function DashboardPage() {
         subtitle="Latest fulfilled feature snapshot grouped into readable sections."
       />
       <MoodLabelCard label={latestFeature.label} />
-      <AppButton label="Refresh Snapshot" onPress={loadLatestFeature} variant="neutral" style={styles.inlineButton} />
 
       {sections.map((section) => (
         <FeatureSectionCard key={section.title} rows={section.rows} title={section.title} />

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigation } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { StyleSheet, View } from "react-native";
 
@@ -10,6 +10,7 @@ import ErrorState from "../components/states/ErrorState";
 import LoadingState from "../components/states/LoadingState";
 import AppButton from "../components/ui/AppButton";
 import SectionHeader from "../components/ui/SectionHeader";
+import { useAppRefreshListener } from "../hooks/useAppRefresh";
 import type { RootStackParamList } from "../router/AppRouter";
 import { spacing } from "../theme";
 import type { FeatureRecord } from "../types/features";
@@ -18,6 +19,7 @@ type FeaturesViewState = "loading" | "ready" | "empty" | "error";
 
 export default function FeaturesPage() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const isFocused = useIsFocused();
   const [features, setFeatures] = useState<FeatureRecord[]>([]);
   const [viewState, setViewState] = useState<FeaturesViewState>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -40,6 +42,13 @@ export default function FeaturesPage() {
   useEffect(() => {
     void loadFeatures();
   }, [loadFeatures]);
+
+  useAppRefreshListener(() => {
+    if (!isFocused) {
+      return;
+    }
+    void loadFeatures();
+  });
 
   const handleOpenFeature = useCallback(
     (featureId: string) => {
@@ -74,7 +83,6 @@ export default function FeaturesPage() {
   return (
     <View style={styles.container}>
       <SectionHeader title="Features" subtitle="Browse previous feature captures." />
-      <AppButton label="Refresh History" onPress={loadFeatures} style={styles.inlineButton} variant="neutral" />
       <FeatureList features={features} onPressFeature={handleOpenFeature} />
     </View>
   );
