@@ -10,7 +10,7 @@ describe("MoodLabelCard", () => {
 
     expect(getByText("Mood")).toBeTruthy();
     expect(getByText("Energized")).toBeTruthy();
-    expect(getByText("— Happy")).toBeTruthy();
+    expect(getByText("- Happy")).toBeTruthy();
   });
 
   it("renders unlabeled state when label is missing", () => {

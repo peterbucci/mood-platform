@@ -1,4 +1,5 @@
 import type { MoodCategory, MoodDisplayState, MoodLabelValue } from "../types/mood";
+import { isMoodCategory } from "./moodTaxonomy";
 
 const MOOD_CATEGORY_LABELS: Record<MoodCategory, string> = {
   energized: "Energized",
@@ -9,10 +10,6 @@ const MOOD_CATEGORY_LABELS: Record<MoodCategory, string> = {
 
 function normalizeString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-}
-
-function isMoodCategory(value: string): value is MoodCategory {
-  return value === "energized" || value === "calm" || value === "stressed" || value === "tired";
 }
 
 export function formatMoodCategory(category: string | null | undefined): string {
@@ -59,6 +56,6 @@ export function getMoodDisplayModel(label: MoodLabelValue): {
     state: "labeled",
     categoryLabel,
     emotion,
-    text: `${categoryLabel} — ${emotion}`
+    text: `${categoryLabel} - ${emotion}`
   };
 }

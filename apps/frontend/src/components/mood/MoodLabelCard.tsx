@@ -17,7 +17,7 @@ export default function MoodLabelCard({ label }: MoodLabelCardProps) {
       {mood.state === "labeled" && mood.emotion ? (
         <View style={styles.labeledRow}>
           <MoodBadge category={label?.category} />
-          <Text style={styles.labeledText}>— {mood.emotion}</Text>
+          <Text style={styles.labeledText}>- {mood.emotion}</Text>
         </View>
       ) : (
         <Text style={styles.fallbackText}>{mood.text}</Text>
