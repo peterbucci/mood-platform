@@ -1,82 +1,71 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { getPendingRequestCount, getRequests } from "../api/requests";
 import CreateRequestCard from "../components/requests/CreateRequestCard";
 import PendingCountCard from "../components/requests/PendingCountCard";
 import RequestList from "../components/requests/RequestList";
 import EmptyState from "../components/states/EmptyState";
 import ErrorState from "../components/states/ErrorState";
 import LoadingState from "../components/states/LoadingState";
-import type { FeatureRequestRecord } from "../types/requests";
-
-type RequestsViewState = "loading" | "error" | "ready";
+import { DEFAULT_REQUEST_POLL_INTERVAL_MS, useRequestPolling } from "../hooks/useRequestPolling";
+import type { RootStackParamList } from "../router/AppRouter";
 
 export default function RequestsPage() {
-  const [viewState, setViewState] = useState<RequestsViewState>("loading");
-  const [requests, setRequests] = useState<FeatureRequestRecord[]>([]);
-  const [pendingCount, setPendingCount] = useState<number>(0);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const isFocused = useIsFocused();
+  const {
+    requests,
+    pendingCount,
+    errorMessage,
+    isInitialLoading,
+    isPolling,
+    isRefreshing,
+    refresh
+  } = useRequestPolling({
+    enabled: isFocused,
+    pollIntervalMs: DEFAULT_REQUEST_POLL_INTERVAL_MS
+  });
 
-  const loadRequests = useCallback(async (showInitialLoading: boolean) => {
-    if (showInitialLoading) {
-      setViewState("loading");
-    } else {
-      setIsRefreshing(true);
-    }
-
-    setErrorMessage(null);
-    try {
-      const [items, nextPendingCount] = await Promise.all([getRequests(), getPendingRequestCount()]);
-      setRequests(items);
-      setPendingCount(nextPendingCount);
-      setViewState("ready");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to load requests.";
-      setErrorMessage(message);
-      setViewState("error");
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadRequests(true);
-  }, [loadRequests]);
-
-  const refreshRequests = useCallback(async () => {
-    await loadRequests(false);
-  }, [loadRequests]);
+  const handleOpenFeature = useCallback(
+    (featureId: string) => {
+      navigation.navigate("FeatureDetail", { id: featureId });
+    },
+    [navigation]
+  );
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Requests</Text>
       <Text style={styles.description}>Track feature capture requests and pending queue state.</Text>
       <PendingCountCard pendingCount={pendingCount} />
+      {isPolling ? (
+        <Text style={styles.pollingText}>Auto-refreshing pending requests every few seconds...</Text>
+      ) : null}
       <Pressable
         accessibilityRole="button"
-        disabled={viewState === "loading" || isRefreshing}
-        onPress={refreshRequests}
-        style={[styles.refreshButton, viewState === "loading" || isRefreshing ? styles.buttonDisabled : null]}
+        disabled={isInitialLoading || isRefreshing}
+        onPress={refresh}
+        style={[styles.refreshButton, isInitialLoading || isRefreshing ? styles.buttonDisabled : null]}
       >
         <Text style={styles.refreshButtonText}>{isRefreshing ? "Refreshing..." : "Refresh"}</Text>
       </Pressable>
-      <CreateRequestCard onCreated={refreshRequests} />
+      <CreateRequestCard onCreated={refresh} />
 
-      {viewState === "loading" ? <LoadingState message="Loading requests..." /> : null}
-      {viewState === "error" ? (
+      {isInitialLoading ? <LoadingState message="Loading requests..." /> : null}
+      {!isInitialLoading && errorMessage && requests.length === 0 ? (
         <View style={styles.errorContainer}>
-          <ErrorState message={errorMessage ?? "Failed to load requests."} />
-          <Pressable accessibilityRole="button" onPress={refreshRequests} style={styles.retryButton}>
+          <ErrorState message={errorMessage} />
+          <Pressable accessibilityRole="button" onPress={refresh} style={styles.retryButton}>
             <Text style={styles.retryButtonText}>Retry</Text>
           </Pressable>
         </View>
       ) : null}
-      {viewState === "ready" && requests.length === 0 ? (
+      {!isInitialLoading && !errorMessage && requests.length === 0 ? (
         <EmptyState message="No feature requests yet. Trigger a capture to get started." />
       ) : null}
-      {viewState === "ready" && requests.length > 0 ? <RequestList requests={requests} /> : null}
+      {requests.length > 0 ? <RequestList onPressFeature={handleOpenFeature} requests={requests} /> : null}
     </View>
   );
 }
@@ -93,6 +82,11 @@ const styles = StyleSheet.create({
   description: {
     color: "#4b5563",
     fontSize: 16
+  },
+  pollingText: {
+    color: "#92400e",
+    fontSize: 13,
+    fontWeight: "600"
   },
   refreshButton: {
     alignSelf: "flex-start",
