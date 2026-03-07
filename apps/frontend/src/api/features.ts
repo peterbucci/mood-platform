@@ -1,27 +1,6 @@
-import type { FeatureListResponse, FeatureRecord } from "../types/features";
-
-const DEFAULT_API_BASE_URL = "http://localhost:8000";
-
-function getApiBaseUrl(): string {
-  const configured = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
-  if (configured) {
-    return configured.replace(/\/+$/, "");
-  }
-  return DEFAULT_API_BASE_URL;
-}
-
-function buildApiUrl(path: string): string {
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${getApiBaseUrl()}${normalizedPath}`;
-}
-
-async function parseJson(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
-}
+import type { FeatureDeleteResponse, FeatureListResponse, FeatureRecord } from "../types/features";
+import { apiDelete, apiGet } from "./client";
+import { createApiError } from "./errors";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -56,43 +35,24 @@ function toFeatureRecord(payload: unknown): FeatureRecord | null {
 }
 
 export async function getLatestFeature(): Promise<FeatureRecord | null> {
-  const response = await fetch(buildApiUrl("/features/latest"), {
-    headers: {
-      Accept: "application/json"
-    }
-  });
-
-  if (response.status === 404) {
+  const payload = await apiGet<unknown>("/features/latest", { allow404: true });
+  if (payload === null) {
     return null;
-  }
-
-  const payload = await parseJson(response);
-  if (!response.ok) {
-    throw new Error("Failed to fetch latest feature snapshot.");
   }
 
   const record = toFeatureRecord(payload);
   if (!record) {
-    throw new Error("Invalid latest feature payload.");
+    throw createApiError({ message: "Invalid latest feature payload." });
   }
   return record;
 }
 
 export async function getFeatureById(id: string): Promise<FeatureRecord> {
-  const response = await fetch(buildApiUrl(`/features/${id}`), {
-    headers: {
-      Accept: "application/json"
-    }
-  });
-  const payload = await parseJson(response);
-
-  if (!response.ok) {
-    throw new Error("Failed to fetch feature by id.");
-  }
+  const payload = await apiGet<unknown>(`/features/${id}`);
 
   const record = toFeatureRecord(payload);
   if (!record) {
-    throw new Error("Invalid feature payload.");
+    throw createApiError({ message: "Invalid feature payload." });
   }
   return record;
 }
@@ -102,21 +62,20 @@ export async function getFeatures(limit = 20, offset = 0): Promise<FeatureRecord
     limit: String(limit),
     offset: String(offset)
   });
-  const response = await fetch(buildApiUrl(`/features?${query.toString()}`), {
-    headers: {
-      Accept: "application/json"
-    }
-  });
-  const payload = (await parseJson(response)) as Partial<FeatureListResponse> | null;
-
-  if (!response.ok) {
-    throw new Error("Failed to fetch features.");
-  }
+  const payload = await apiGet<Partial<FeatureListResponse>>(`/features?${query.toString()}`);
   if (!payload || !Array.isArray(payload.items)) {
-    throw new Error("Invalid feature list payload.");
+    throw createApiError({ message: "Invalid feature list payload." });
   }
 
   return payload.items
     .map((item) => toFeatureRecord(item))
     .filter((item): item is FeatureRecord => item !== null);
+}
+
+export async function deleteFeature(featureId: string): Promise<FeatureDeleteResponse> {
+  const payload = await apiDelete<Partial<FeatureDeleteResponse>>(`/features/${featureId}`);
+  if (!payload || typeof payload.id !== "string") {
+    throw createApiError({ message: "Invalid delete feature payload." });
+  }
+  return { id: payload.id };
 }
