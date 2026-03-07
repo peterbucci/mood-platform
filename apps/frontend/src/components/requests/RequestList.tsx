@@ -4,17 +4,17 @@ import type { FeatureRequestRecord } from "../../types/requests";
 import RequestListItem from "./RequestListItem";
 
 type RequestListProps = {
-  cancelErrorById?: Record<string, string>;
-  cancelingById?: Record<string, boolean>;
-  onPressCancel?: (requestId: string) => void;
+  deleteErrorById?: Record<string, string>;
+  deletingById?: Record<string, boolean>;
+  onPressDelete?: (requestId: string) => void;
   onPressFeature?: (featureId: string) => void;
   requests: FeatureRequestRecord[];
 };
 
 export default function RequestList({
-  cancelErrorById,
-  cancelingById,
-  onPressCancel,
+  deleteErrorById,
+  deletingById,
+  onPressDelete,
   onPressFeature,
   requests
 }: RequestListProps) {
@@ -23,9 +23,9 @@ export default function RequestList({
       {requests.map((request, index) => (
         <RequestListItem
           key={request.id}
-          cancelError={cancelErrorById?.[request.id]}
-          isCanceling={Boolean(cancelingById?.[request.id])}
-          onPressCancel={onPressCancel}
+          deleteError={deleteErrorById?.[request.id]}
+          isDeleting={Boolean(deletingById?.[request.id])}
+          onPressDelete={onPressDelete}
           onPressFeature={onPressFeature}
           request={request}
           showDivider={index > 0}

@@ -4,6 +4,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import CreateRequestCard from "../components/requests/CreateRequestCard";
+import DeleteRequestConfirmationModal from "../components/requests/DeleteRequestConfirmationModal";
 import EmptyRequestsState from "../components/requests/EmptyRequestsState";
 import RequestList from "../components/requests/RequestList";
 import RequestSummaryCard from "../components/requests/RequestSummaryCard";
@@ -33,11 +34,14 @@ function queueStatusMessage(pendingCount: number): string {
 export default function RequestsPage() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const isFocused = useIsFocused();
+  const [deleteModalError, setDeleteModalError] = useState<string | null>(null);
+  const [requestPendingDelete, setRequestPendingDelete] = useState<FeatureRequestRecord | null>(null);
   const [requestMoodById, setRequestMoodById] = useState<Record<string, MoodLabelValue>>({});
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const {
-    cancelErrorById,
-    cancelPendingRequest,
-    cancelingById,
+    deleteErrorById,
+    deleteRequestRecord,
+    deletingById,
     requests,
     pendingCount,
     errorMessage,
@@ -56,13 +60,6 @@ export default function RequestsPage() {
     [navigation]
   );
 
-  const handleCancelRequest = useCallback(
-    async (requestId: string) => {
-      await cancelPendingRequest(requestId);
-    },
-    [cancelPendingRequest]
-  );
-
   const handleRequestCreated = useCallback(
     async (
       created: { requestId: string },
@@ -78,10 +75,41 @@ export default function RequestsPage() {
           emotion: moodSelection.emotion
         }
       }));
+      setSuccessMessage(null);
       await refresh();
     },
     [refresh]
   );
+
+  const handleDeleteModalClose = useCallback(() => {
+    setDeleteModalError(null);
+    setRequestPendingDelete(null);
+  }, []);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!requestPendingDelete) {
+      return;
+    }
+
+    try {
+      await deleteRequestRecord(requestPendingDelete.id);
+      setDeleteModalError(null);
+      setRequestPendingDelete(null);
+      setSuccessMessage("Request deleted successfully.");
+      setRequestMoodById((current) => {
+        if (!current[requestPendingDelete.id]) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[requestPendingDelete.id];
+        return next;
+      });
+    } catch (error) {
+      setDeleteModalError(
+        error instanceof Error ? error.message : "Unable to delete request. Please try again."
+      );
+    }
+  }, [deleteRequestRecord, requestPendingDelete]);
 
   const requestsWithMood = useMemo<FeatureRequestRecord[]>(
     () =>
@@ -101,6 +129,16 @@ export default function RequestsPage() {
         };
       }),
     [requestMoodById, requests]
+  );
+
+  const handleDeleteRequestPress = useCallback(
+    (requestId: string) => {
+      const targetRequest = requestsWithMood.find((request) => request.id === requestId) ?? null;
+      setDeleteModalError(null);
+      setRequestPendingDelete(targetRequest);
+      setSuccessMessage(null);
+    },
+    [requestsWithMood]
   );
 
   const nowMs = Date.now();
@@ -185,6 +223,13 @@ export default function RequestsPage() {
         <InfoText tone={pendingCount > 0 ? "warning" : "muted"}>{queueStatusMessage(pendingCount)}</InfoText>
       </View>
 
+      {successMessage ? (
+        <View style={styles.successBanner}>
+          <Text style={styles.successBannerTitle}>Request deleted</Text>
+          <InfoText tone="success">{successMessage}</InfoText>
+        </View>
+      ) : null}
+
       <CreateRequestCard onCreated={handleRequestCreated} />
 
       <AppCard style={styles.historyCard}>
@@ -221,15 +266,24 @@ export default function RequestsPage() {
               <InfoText tone="warning">Showing your latest activity. Refresh to check for new updates.</InfoText>
             ) : null}
             <RequestList
-              cancelErrorById={cancelErrorById}
-              cancelingById={cancelingById}
-              onPressCancel={handleCancelRequest}
+              deleteErrorById={deleteErrorById}
+              deletingById={deletingById}
+              onPressDelete={handleDeleteRequestPress}
               onPressFeature={handleOpenFeature}
               requests={requestsWithMood}
             />
           </>
         ) : null}
       </AppCard>
+
+      <DeleteRequestConfirmationModal
+        errorMessage={deleteModalError}
+        isDeleting={Boolean(requestPendingDelete && deletingById[requestPendingDelete.id])}
+        onCancel={handleDeleteModalClose}
+        onConfirm={() => void handleConfirmDelete()}
+        request={requestPendingDelete}
+        visible={requestPendingDelete !== null}
+      />
     </View>
   );
 }
@@ -324,6 +378,19 @@ const styles = StyleSheet.create({
   sectionTitle: {
     ...typography.cardTitle,
     color: colors.textPrimary
+  },
+  successBanner: {
+    backgroundColor: colors.successSurface,
+    borderColor: colors.successBorder,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    gap: spacing.xxs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  successBannerTitle: {
+    ...typography.bodyStrong,
+    color: colors.successText
   },
   summaryGrid: {
     flexDirection: "row",

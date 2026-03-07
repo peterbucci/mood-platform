@@ -103,28 +103,21 @@ describe("requests api module", () => {
     );
   });
 
-  it("cancels request using DELETE /requests/{id}", async () => {
+  it("deletes request using DELETE /requests/{id}", async () => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { cancelRequest } = require("./requests");
+    const { deleteRequest } = require("./requests");
     (global.fetch as jest.Mock).mockResolvedValueOnce(
       createMockResponse({
-        body: {
-          createdAt: 1_772_800_000,
-          featureId: null,
-          id: "r-cancel",
-          source: "fitbit-pipeline",
-          status: "canceled",
-          userId: "00000000-0000-0000-0000-000000000001"
-        },
+        body: { id: "r-delete" },
         status: 200
       })
     );
 
-    const canceled = await cancelRequest("r-cancel");
+    const deleted = await deleteRequest("r-delete");
 
-    expect(canceled.status).toBe("canceled");
+    expect(deleted).toEqual({ id: "r-delete" });
     expect(global.fetch).toHaveBeenCalledWith(
-      "http://api.example.test/requests/r-cancel",
+      "http://api.example.test/requests/r-delete",
       expect.objectContaining({ method: "DELETE" })
     );
   });

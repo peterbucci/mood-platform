@@ -10,29 +10,28 @@ import {
 } from "../../utils/requestFormatting";
 import { getMoodDisplayModel } from "../../utils/moodFormatting";
 import MoodBadge from "../mood/MoodBadge";
-import CancelRequestButton from "./CancelRequestButton";
+import DeleteRequestButton from "./DeleteRequestButton";
 import RequestMetaRow from "./RequestMetaRow";
 import StatusBadge from "./StatusBadge";
 
 type RequestListItemProps = {
-  cancelError?: string;
-  isCanceling?: boolean;
-  onPressCancel?: (requestId: string) => void;
+  deleteError?: string;
+  isDeleting?: boolean;
+  onPressDelete?: (requestId: string) => void;
   onPressFeature?: (featureId: string) => void;
   request: FeatureRequestRecord;
   showDivider?: boolean;
 };
 
 export default function RequestListItem({
-  cancelError,
-  isCanceling = false,
-  onPressCancel,
+  deleteError,
+  isDeleting = false,
+  onPressDelete,
   onPressFeature,
   request,
   showDivider = false
 }: RequestListItemProps) {
   const featureId = request.featureId;
-  const isPending = request.status === "pending";
   const mood = getMoodDisplayModel(request.label);
 
   return (
@@ -63,7 +62,7 @@ export default function RequestListItem({
 
         {featureId ? <Text style={styles.featureReadyText}>Feature snapshot ready to review.</Text> : null}
 
-        {featureId || (isPending && onPressCancel) ? (
+        {featureId || onPressDelete ? (
           <View style={styles.actionsRow}>
             {featureId && onPressFeature ? (
               <Pressable
@@ -74,17 +73,17 @@ export default function RequestListItem({
                 <Text style={styles.featureButtonText}>View feature details</Text>
               </Pressable>
             ) : null}
-            {isPending && onPressCancel ? (
-              <CancelRequestButton
-                disabled={isCanceling}
-                isLoading={isCanceling}
-                onPress={() => onPressCancel(request.id)}
+            {onPressDelete ? (
+              <DeleteRequestButton
+                disabled={isDeleting}
+                isLoading={isDeleting}
+                onPress={() => onPressDelete(request.id)}
               />
             ) : null}
           </View>
         ) : null}
 
-        {cancelError ? <Text style={styles.cancelError}>{cancelError}</Text> : null}
+        {deleteError ? <Text style={styles.deleteError}>{deleteError}</Text> : null}
       </View>
     </View>
   );
@@ -96,7 +95,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: spacing.sm
   },
-  cancelError: {
+  deleteError: {
     ...typography.helper,
     color: colors.dangerText,
     fontWeight: "600"

@@ -1,6 +1,7 @@
 import type {
   CreateFeatureRequestInput,
   CreateFeatureRequestResponse,
+  DeleteRequestResponse,
   FeatureRequestRecord,
   PendingRequestCountResponse,
   RequestListResponse
@@ -120,11 +121,11 @@ export async function getPendingRequestCount(): Promise<number> {
   return payload.pendingCount;
 }
 
-export async function cancelRequest(requestId: string): Promise<FeatureRequestRecord> {
-  const payload = await apiDelete<Partial<FeatureRequestRecord>>(`/requests/${requestId}`);
-  const record = toRequestRecord(payload);
-  if (!record) {
-    throw createApiError({ message: "Invalid cancel request payload." });
+export async function deleteRequest(requestId: string): Promise<DeleteRequestResponse> {
+  const payload = await apiDelete<Partial<DeleteRequestResponse>>(`/requests/${requestId}`);
+  if (!payload || typeof payload.id !== "string") {
+    throw createApiError({ message: "Invalid delete request payload." });
   }
-  return record;
+
+  return { id: payload.id };
 }

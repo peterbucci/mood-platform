@@ -2,28 +2,26 @@ import { Pressable, StyleSheet, Text } from "react-native";
 
 import { colors, radius, spacing, typography } from "../../theme";
 
-type CancelRequestButtonProps = {
+type DeleteRequestButtonProps = {
   disabled?: boolean;
   isLoading?: boolean;
   onPress: () => void;
 };
 
-export default function CancelRequestButton({
+export default function DeleteRequestButton({
   disabled = false,
   isLoading = false,
   onPress
-}: CancelRequestButtonProps) {
+}: DeleteRequestButtonProps) {
   return (
     <Pressable
       accessibilityRole="button"
       disabled={disabled || isLoading}
       onPress={onPress}
-      style={[
-        styles.button,
-        disabled || isLoading ? styles.buttonDisabled : null
-      ]}
+      style={[styles.button, disabled || isLoading ? styles.buttonDisabled : null]}
+      testID="request-delete-button"
     >
-      <Text style={styles.buttonText}>{isLoading ? "Canceling..." : "Cancel"}</Text>
+      <Text style={styles.buttonText}>{isLoading ? "Deleting..." : "Delete"}</Text>
     </Pressable>
   );
 }
@@ -33,8 +31,8 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     backgroundColor: colors.surface,
     borderColor: colors.dangerBorder,
-    borderWidth: 1,
     borderRadius: radius.sm,
+    borderWidth: 1,
     minHeight: 34,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs
