@@ -1,8 +1,9 @@
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 
-import { getLatestFeature } from "../api/features";
+import { getFeatures } from "../api/features";
 import type { FeatureRecord } from "../types/features";
+import type { MoodCategory } from "../types/mood";
 import DashboardPage from "./DashboardPage";
 
 jest.mock("../api/features");
@@ -12,122 +13,142 @@ jest.mock("@react-navigation/native", () => ({
   useNavigation: jest.fn()
 }));
 
-const mockedGetLatestFeature = jest.mocked(getLatestFeature);
+const mockedGetFeatures = jest.mocked(getFeatures);
 const mockedUseIsFocused = jest.mocked(useIsFocused);
 const mockedUseNavigation = jest.mocked(useNavigation);
 
-const LATEST_FEATURE: FeatureRecord = {
-  createdAt: 1_772_800_900,
-  data: {
-    activity: {
-      active_minutes: 38,
-      steps: 4567
-    },
-    derived: {
-      dayOfWeek: 2,
-      isWeekend: false,
-      rhrMean7d: 70
-    },
-    heart_rate: {
-      resting_bpm: 61
-    },
-    hrv: {
-      daily_rmssd: 35.2
-    },
-    meta: {
-      extractor_version: "v2.1.0",
-      source_timezone: "America/New_York",
-      window_end: "2026-03-06T12:00:00Z",
-      window_start: "2026-03-06T00:00:00Z"
-    },
-    personal_baseline: {
-      avg_sleep: 410
-    },
-    sleep: {
-      sleep_efficiency_pct: 91,
-      total_sleep_minutes: 420
-    }
-  },
-  id: "feature-1",
-  label: {
-    category: "energized",
-    emotion: "Happy"
-  },
-  source: "fitbit-pipeline",
-  userId: "00000000-0000-0000-0000-000000000001"
-};
+function toEpoch(value: string): number {
+  return Math.floor(new Date(value).getTime() / 1000);
+}
+
+function buildFeature(
+  id: string,
+  createdAt: string,
+  category?: MoodCategory,
+  emotion?: string
+): FeatureRecord {
+  return {
+    id,
+    userId: "00000000-0000-0000-0000-000000000001",
+    createdAt: toEpoch(createdAt),
+    source: "fitbit-pipeline",
+    data: {},
+    label: category && emotion ? { category, emotion } : undefined
+  };
+}
+
+const FEATURE_HISTORY: FeatureRecord[] = [
+  buildFeature("feature-1", "2026-03-01T18:00:00Z", "calm", "Relaxed"),
+  buildFeature("feature-2", "2026-03-02T18:00:00Z", "energized", "Motivated"),
+  buildFeature("feature-3", "2026-03-03T18:00:00Z", "energized", "Motivated"),
+  buildFeature("feature-4", "2026-03-05T18:00:00Z", "stressed", "Anxious"),
+  buildFeature("feature-5", "2026-03-07T12:00:00Z", "calm", "Relaxed"),
+  buildFeature("feature-6", "2026-03-07T18:00:00Z", "energized", "Motivated")
+];
 
 describe("DashboardPage", () => {
   beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-03-07T20:00:00Z"));
     jest.resetAllMocks();
+
     mockedUseIsFocused.mockReturnValue(true);
     mockedUseNavigation.mockReturnValue({
       navigate: jest.fn()
     } as never);
   });
 
-  it("renders grouped latest snapshot sections and metadata", async () => {
-    mockedGetLatestFeature.mockResolvedValue(LATEST_FEATURE);
+  afterEach(() => {
+    jest.useRealTimers();
+  });
 
-    const { getByText } = render(<DashboardPage />);
+  it("renders the dashboard overview and supports chart toggles", async () => {
+    mockedGetFeatures.mockResolvedValue(FEATURE_HISTORY);
+
+    const { getAllByText, getByTestId, getByText } = render(<DashboardPage />);
 
     await waitFor(() => {
-      expect(getByText("Dashboard")).toBeTruthy();
-      expect(getByText("Activity")).toBeTruthy();
-      expect(getByText("Heart / Recovery")).toBeTruthy();
-      expect(getByText("Sleep")).toBeTruthy();
-      expect(getByText("Daily / Context")).toBeTruthy();
-      expect(getByText("Personal / Baseline")).toBeTruthy();
-      expect(getByText("Snapshot Metadata")).toBeTruthy();
-      expect(getByText("America/New_York")).toBeTruthy();
-      expect(getByText("v2.1.0")).toBeTruthy();
-      expect(getByText("Mood")).toBeTruthy();
-      expect(getByText("Energized")).toBeTruthy();
-      expect(getByText("- Happy")).toBeTruthy();
+      expect(getByText("Today's Mood")).toBeTruthy();
+      expect(getAllByText("Motivated").length).toBeGreaterThan(0);
+      expect(getByText("2 entries today")).toBeTruthy();
+      expect(getByText("Entries this week")).toBeTruthy();
+      expect(getByText("Most common mood")).toBeTruthy();
+      expect(getByText("Average category")).toBeTruthy();
+      expect(getByText("Longest streak")).toBeTruthy();
+      expect(getByText("Mood Trend")).toBeTruthy();
+      expect(getByText("Category Distribution")).toBeTruthy();
+      expect(getByText("Insights")).toBeTruthy();
+      expect(getByText("View details for the latest feature set")).toBeTruthy();
+      expect(getByText("Last logged 2h ago")).toBeTruthy();
+      expect(getByTestId("mood-history-chart")).toBeTruthy();
+    });
+
+    fireEvent.press(getByTestId("dashboard-timeframe-14"));
+
+    await waitFor(() => {
+      expect(getByText("Daily stacked trend for the last 14 days.")).toBeTruthy();
+      expect(getByText("Last 14 days")).toBeTruthy();
+    });
+
+    fireEvent.press(getByTestId("dashboard-mode-emotion"));
+
+    await waitFor(() => {
+      expect(getByText("Anxious")).toBeTruthy();
+      expect(getAllByText("Relaxed").length).toBeGreaterThan(0);
     });
   });
 
-  it("renders empty state when no latest feature exists", async () => {
-    mockedGetLatestFeature.mockResolvedValue(null);
+  it("renders an empty feature state when there is no dashboard data yet", async () => {
+    mockedGetFeatures.mockResolvedValue([]);
 
     const { getByText } = render(<DashboardPage />);
 
     await waitFor(() => {
       expect(
-        getByText(
-          "No feature data available yet. Request a capture to generate your first snapshot."
-        )
+        getByText("No feature data available yet. Log an emotion to build your dashboard trend.")
       ).toBeTruthy();
     });
   });
 
-  it("renders error state when latest feature fetch fails", async () => {
-    mockedGetLatestFeature.mockRejectedValue(new Error("Failed to fetch latest feature snapshot."));
+  it("renders a no-label fallback when features exist without mood labels", async () => {
+    mockedGetFeatures.mockResolvedValue([buildFeature("feature-unlabeled", "2026-03-07T18:00:00Z")]);
+
+    const { getByText } = render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(getByText("No mood logged yet")).toBeTruthy();
+      expect(
+        getByText("No mood labels yet. Add labels on feature detail pages to populate this dashboard.")
+      ).toBeTruthy();
+      expect(getByText("View details for the latest feature set")).toBeTruthy();
+    });
+  });
+
+  it("renders an error state when dashboard loading fails", async () => {
+    mockedGetFeatures.mockRejectedValue(new Error("Failed to load dashboard overview."));
 
     const { getByText } = render(<DashboardPage />);
 
     await waitFor(() => {
       expect(getByText("Something went wrong")).toBeTruthy();
-      expect(getByText("Failed to fetch latest feature snapshot.")).toBeTruthy();
+      expect(getByText("Failed to load dashboard overview.")).toBeTruthy();
       expect(getByText("Try Again")).toBeTruthy();
     });
   });
 
-  it("navigates to feature detail when detail link is tapped", async () => {
+  it("uses the latest feature link to navigate to feature detail", async () => {
     const navigate = jest.fn();
-    mockedUseNavigation.mockReturnValue({
-      navigate
-    } as never);
-    mockedGetLatestFeature.mockResolvedValue(LATEST_FEATURE);
+    mockedUseNavigation.mockReturnValue({ navigate } as never);
+    mockedGetFeatures.mockResolvedValue(FEATURE_HISTORY);
 
-    const { getByText } = render(<DashboardPage />);
+    const { getByTestId } = render(<DashboardPage />);
 
     await waitFor(() => {
-      expect(getByText("View Full Feature Details")).toBeTruthy();
+      expect(getByTestId("dashboard-latest-feature-link")).toBeTruthy();
     });
 
-    fireEvent.press(getByText("View Full Feature Details"));
+    fireEvent.press(getByTestId("dashboard-latest-feature-link"));
 
-    expect(navigate).toHaveBeenCalledWith("FeatureDetail", { id: "feature-1" });
+    expect(navigate).toHaveBeenCalledWith("FeatureDetail", { id: "feature-6" });
   });
 });

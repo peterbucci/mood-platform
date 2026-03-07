@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { getLatestFeature } from "../api/features";
-import FeatureMetadataCard from "../components/dashboard/FeatureMetadataCard";
-import FeatureSectionCard from "../components/dashboard/FeatureSectionCard";
-import MoodLabelCard from "../components/mood/MoodLabelCard";
+import { getFeatures } from "../api/features";
+import CategoryDistributionChart from "../components/dashboard/CategoryDistributionChart";
+import InsightCard from "../components/dashboard/InsightCard";
+import MetricCard from "../components/dashboard/MetricCard";
+import MoodSummaryCard from "../components/dashboard/MoodSummaryCard";
+import MoodTrendChart from "../components/dashboard/MoodTrendChart";
 import EmptyState from "../components/states/EmptyState";
 import ErrorState from "../components/states/ErrorState";
 import LoadingState from "../components/states/LoadingState";
@@ -14,257 +16,46 @@ import AppButton from "../components/ui/AppButton";
 import SectionHeader from "../components/ui/SectionHeader";
 import { useAppRefreshListener } from "../hooks/useAppRefresh";
 import type { RootStackParamList } from "../router/AppRouter";
-import { spacing } from "../theme";
-import type { FeatureData, FeatureRecord } from "../types/features";
+import { colors, spacing, typography } from "../theme";
+import type { FeatureRecord } from "../types/features";
+import type { DashboardChartMode, DashboardTimeframe } from "../utils/dashboardAnalytics";
+import {
+  buildCategoryDistribution,
+  buildDashboardInsights,
+  buildDashboardMetrics,
+  buildDashboardSummary,
+  buildMoodTrendChart,
+  filterEntriesByTimeframe,
+  getDashboardEntries
+} from "../utils/dashboardAnalytics";
 
 type DashboardViewState = "loading" | "ready" | "empty" | "error";
 
-type FlatFeatureValue = {
-  path: string;
-  value: unknown;
-};
-
-type FeatureSection = {
-  title: "Activity" | "Heart / Recovery" | "Sleep" | "Daily / Context" | "Personal / Baseline";
-  rows: Array<{ label: string; value: string }>;
-};
-
-const SECTION_ORDER: FeatureSection["title"][] = [
-  "Activity",
-  "Heart / Recovery",
-  "Sleep",
-  "Daily / Context",
-  "Personal / Baseline"
-];
-
-const NON_SECTION_KEYS = new Set(["meta", "notes", "clientFeatures", "client_features"]);
-
-const SECTION_KEYWORDS: Record<FeatureSection["title"], string[]> = {
-  Activity: [
-    "step",
-    "activity",
-    "active",
-    "exercise",
-    "workout",
-    "distance",
-    "calorie",
-    "azm",
-    "sedentary"
-  ],
-  "Heart / Recovery": [
-    "heart",
-    "hr",
-    "bpm",
-    "hrv",
-    "rmssd",
-    "resting",
-    "recovery",
-    "rhr"
-  ],
-  Sleep: [
-    "sleep",
-    "bed",
-    "wake",
-    "rem",
-    "deep",
-    "waso",
-    "fragmentation",
-    "debt",
-    "night"
-  ],
-  "Daily / Context": [
-    "day",
-    "hour",
-    "weekend",
-    "weekday",
-    "time",
-    "context",
-    "weather",
-    "location",
-    "aqi",
-    "timezone",
-    "local"
-  ],
-  "Personal / Baseline": [
-    "baseline",
-    "avg",
-    "mean",
-    "trend",
-    "deviation",
-    "std",
-    "z",
-    "personal",
-    "rolling"
-  ]
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function humanizeKey(path: string): string {
-  const segment = path.split(".").pop() ?? path;
-  const spaced = segment.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ");
-  return spaced.replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function formatNumber(value: number): string {
-  if (Number.isInteger(value)) {
-    return String(value);
-  }
-  const rounded = value.toFixed(2);
-  return rounded.replace(/\.?0+$/, "");
-}
-
-function formatValue(value: unknown): string {
-  if (value === null || value === undefined) {
-    return "N/A";
-  }
-  if (typeof value === "number") {
-    return formatNumber(value);
-  }
-  if (typeof value === "boolean") {
-    return value ? "Yes" : "No";
-  }
-  if (typeof value === "string") {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => formatValue(item)).join(", ");
-  }
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
-function flattenFeatureData(data: FeatureData, prefix = ""): FlatFeatureValue[] {
-  const flattened: FlatFeatureValue[] = [];
-
-  for (const [key, value] of Object.entries(data)) {
-    if (NON_SECTION_KEYS.has(key)) {
-      continue;
-    }
-    const path = prefix ? `${prefix}.${key}` : key;
-
-    if (isRecord(value)) {
-      flattened.push(...flattenFeatureData(value, path));
-      continue;
-    }
-
-    flattened.push({ path, value });
-  }
-
-  return flattened;
-}
-
-function classifySection(path: string): FeatureSection["title"] {
-  const normalizedPath = path.toLowerCase();
-
-  for (const section of SECTION_ORDER) {
-    if (SECTION_KEYWORDS[section].some((keyword) => normalizedPath.includes(keyword))) {
-      return section;
-    }
-  }
-
-  return "Daily / Context";
-}
-
-function buildSections(data: FeatureData): FeatureSection[] {
-  const rowsBySection: Record<FeatureSection["title"], Array<{ label: string; value: string }>> = {
-    Activity: [],
-    "Heart / Recovery": [],
-    Sleep: [],
-    "Daily / Context": [],
-    "Personal / Baseline": []
-  };
-
-  for (const item of flattenFeatureData(data)) {
-    const section = classifySection(item.path);
-    rowsBySection[section].push({
-      label: humanizeKey(item.path),
-      value: formatValue(item.value)
-    });
-  }
-
-  return SECTION_ORDER.map((title) => ({
-    title,
-    rows: rowsBySection[title]
-  }));
-}
-
-function formatTimestamp(value: number | string | null | undefined): string {
-  if (value === null || value === undefined) {
-    return "N/A";
-  }
-
-  const parsed =
-    typeof value === "number" ? new Date(value * 1000) : new Date(typeof value === "string" ? value : "");
-  if (Number.isNaN(parsed.getTime())) {
-    return String(value);
-  }
-
-  return parsed.toLocaleString();
-}
-
-function readString(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value : null;
-}
-
-function extractMetadata(feature: FeatureRecord) {
-  const meta = isRecord(feature.data.meta) ? feature.data.meta : {};
-
-  const extractorVersion =
-    readString(feature.extractorVersion) ??
-    readString(meta.extractorVersion) ??
-    readString(meta.extractor_version) ??
-    "N/A";
-
-  const windowStart =
-    readString(feature.windowStart) ??
-    readString(meta.windowStart) ??
-    readString(meta.window_start) ??
-    "N/A";
-
-  const windowEnd =
-    readString(feature.windowEnd) ?? readString(meta.windowEnd) ?? readString(meta.window_end) ?? "N/A";
-
-  const sourceTimezone =
-    readString(feature.sourceTimezone) ??
-    readString(meta.sourceTimezone) ??
-    readString(meta.source_timezone) ??
-    "N/A";
-
-  return {
-    createdAt: formatTimestamp(feature.createdAt),
-    source: feature.source,
-    extractorVersion,
-    windowStart: formatTimestamp(windowStart),
-    windowEnd: formatTimestamp(windowEnd),
-    sourceTimezone
-  };
-}
+const MAX_DASHBOARD_FEATURES = 100;
 
 export default function DashboardPage() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const isFocused = useIsFocused();
   const [viewState, setViewState] = useState<DashboardViewState>("loading");
-  const [latestFeature, setLatestFeature] = useState<FeatureRecord | null>(null);
+  const [chartMode, setChartMode] = useState<DashboardChartMode>("category");
+  const [timeframe, setTimeframe] = useState<DashboardTimeframe>(7);
+  const [features, setFeatures] = useState<FeatureRecord[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const loadLatestFeature = useCallback(async () => {
+  const loadDashboard = useCallback(async () => {
     setViewState("loading");
     setErrorMessage(null);
 
     try {
-      const feature = await getLatestFeature();
-      if (feature === null) {
-        setLatestFeature(null);
+      const records = await getFeatures(MAX_DASHBOARD_FEATURES, 0);
+      if (records.length === 0) {
+        setFeatures([]);
         setViewState("empty");
         return;
       }
-      setLatestFeature(feature);
+
+      const sorted = [...records].sort((a, b) => b.createdAt - a.createdAt);
+      setFeatures(sorted);
       setViewState("ready");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to load dashboard data.";
@@ -274,34 +65,49 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    void loadLatestFeature();
-  }, [loadLatestFeature]);
+    void loadDashboard();
+  }, [loadDashboard]);
 
   useAppRefreshListener(() => {
     if (!isFocused) {
       return;
     }
-    void loadLatestFeature();
+
+    void loadDashboard();
   });
 
-  const sections = useMemo(
-    () => (latestFeature ? buildSections(latestFeature.data) : []),
-    [latestFeature]
+  const entries = useMemo(() => getDashboardEntries(features), [features]);
+  const summary = useMemo(() => buildDashboardSummary(entries, Date.now()), [entries]);
+  const metrics = useMemo(() => buildDashboardMetrics(entries, Date.now()), [entries]);
+  const timeframeEntries = useMemo(() => filterEntriesByTimeframe(entries, timeframe, Date.now()), [entries, timeframe]);
+  const chartData = useMemo(
+    () => buildMoodTrendChart(timeframeEntries, chartMode, timeframe, Date.now()),
+    [chartMode, timeframe, timeframeEntries]
   );
-  const metadata = useMemo(
-    () => (latestFeature ? extractMetadata(latestFeature) : null),
-    [latestFeature]
-  );
+  const distribution = useMemo(() => buildCategoryDistribution(timeframeEntries), [timeframeEntries]);
+  const insights = useMemo(() => buildDashboardInsights(entries, Date.now()), [entries]);
+
+  const latestFeature = features[0] ?? null;
+  const hasChartData = chartData.series.length > 0 && chartData.points.some((point) => point.total > 0);
+  const hasTimeframeData = timeframeEntries.length > 0;
+
+  const handleOpenLatestFeature = useCallback(() => {
+    if (!latestFeature) {
+      return;
+    }
+
+    navigation.navigate("FeatureDetail", { id: latestFeature.id });
+  }, [latestFeature, navigation]);
 
   if (viewState === "loading") {
-    return <LoadingState message="Loading latest feature snapshot..." />;
+    return <LoadingState message="Loading dashboard overview..." />;
   }
 
   if (viewState === "empty") {
     return (
       <View style={styles.container}>
-        <SectionHeader title="Dashboard" />
-        <EmptyState message="No feature data available yet. Request a capture to generate your first snapshot." />
+        <SectionHeader title="Dashboard" subtitle="Quick health overview from your recent mood labels." />
+        <EmptyState message="No feature data available yet. Log an emotion to build your dashboard trend." />
       </View>
     );
   }
@@ -311,43 +117,103 @@ export default function DashboardPage() {
       <View style={styles.container}>
         <SectionHeader title="Dashboard" />
         <ErrorState message={errorMessage ?? "Failed to load dashboard data."} />
-        <AppButton label="Try Again" onPress={loadLatestFeature} variant="neutral" style={styles.inlineButton} />
+        <AppButton label="Try Again" onPress={loadDashboard} style={styles.inlineButton} variant="neutral" />
       </View>
     );
   }
 
-  if (!latestFeature || !metadata) {
-    return null;
-  }
-
   return (
     <View style={styles.container}>
-      <SectionHeader
-        title="Dashboard"
-        subtitle="Latest fulfilled feature snapshot grouped into readable sections."
+      <SectionHeader title="Dashboard" subtitle="Quick health overview from your recent mood labels." />
+
+      <MoodSummaryCard
+        category={summary.primaryEntry?.category ?? null}
+        emotion={summary.primaryEntry?.emotionLabel ?? null}
+        entriesToday={summary.entriesToday}
+        isToday={summary.isToday}
+        lastLogged={summary.lastLogged}
+        message={summary.message}
       />
-      <MoodLabelCard label={latestFeature.label} />
 
-      {sections.map((section) => (
-        <FeatureSectionCard key={section.title} rows={section.rows} title={section.title} />
-      ))}
+      {entries.length > 0 ? (
+        <View style={styles.metricsGrid}>
+          {metrics.map((metric) => (
+            <View key={metric.key} style={styles.metricCell}>
+              <MetricCard
+                detail={metric.detail}
+                icon={metric.icon}
+                label={metric.label}
+                tone={metric.tone}
+                value={metric.value}
+              />
+            </View>
+          ))}
+        </View>
+      ) : null}
 
-      <FeatureMetadataCard metadata={metadata} />
+      {entries.length === 0 ? (
+        <EmptyState message="No mood labels yet. Add labels on feature detail pages to populate this dashboard." />
+      ) : (
+        <>
+          {hasChartData ? (
+            <MoodTrendChart
+              mode={chartMode}
+              onChangeMode={setChartMode}
+              onChangeTimeframe={setTimeframe}
+              points={chartData.points}
+              series={chartData.series}
+              timeframe={timeframe}
+            />
+          ) : (
+            <EmptyState message="No mood labels in the selected timeframe yet. Try a wider range or log a new mood." />
+          )}
 
-      <AppButton
-        label="View Full Feature Details"
-        onPress={() => navigation.navigate("FeatureDetail", { id: latestFeature.id })}
-      />
+          {hasTimeframeData ? (
+            <CategoryDistributionChart distribution={distribution} timeframe={timeframe} />
+          ) : null}
+
+          <InsightCard insights={insights} />
+        </>
+      )}
+
+      {latestFeature ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={handleOpenLatestFeature}
+          style={styles.latestFeatureLink}
+          testID="dashboard-latest-feature-link"
+        >
+          <Text style={styles.latestFeatureLinkText}>View details for the latest feature set</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    gap: spacing.sm
+    gap: spacing.lg
   },
   inlineButton: {
     alignSelf: "flex-start",
     minWidth: 164
+  },
+  latestFeatureLink: {
+    alignSelf: "flex-start",
+    paddingVertical: spacing.xs
+  },
+  latestFeatureLinkText: {
+    ...typography.bodyStrong,
+    color: colors.primaryStrong,
+    textDecorationLine: "underline"
+  },
+  metricCell: {
+    width: "48%"
+  },
+  metricsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.md,
+    justifyContent: "space-between"
   }
 });
