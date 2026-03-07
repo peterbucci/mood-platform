@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { colors, radius, spacing, typography } from "../../theme";
 import type { MoodCategory } from "../../types/mood";
 import { formatMoodCategory } from "../../utils/moodFormatting";
 import { MOOD_CATEGORIES } from "../../utils/moodTaxonomy";
@@ -43,39 +44,39 @@ export default function CategorySelector({
 
 const styles = StyleSheet.create({
   container: {
-    gap: 8
+    gap: spacing.sm
   },
   label: {
-    color: "#374151",
-    fontSize: 14,
-    fontWeight: "700"
+    ...typography.bodyStrong,
+    color: colors.textPrimary
   },
   options: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8
+    gap: spacing.sm
   },
   option: {
-    backgroundColor: "#f9fafb",
-    borderColor: "#d1d5db",
-    borderRadius: 999,
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.neutralBorder,
+    borderRadius: radius.pill,
     borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6
+    minHeight: 34,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs
   },
   optionSelected: {
-    backgroundColor: "#dbeafe",
-    borderColor: "#2563eb"
+    backgroundColor: colors.primary,
+    borderColor: colors.primaryStrong
   },
   optionDisabled: {
     opacity: 0.65
   },
   optionText: {
-    color: "#374151",
-    fontSize: 12,
+    ...typography.helper,
+    color: colors.textSecondary,
     fontWeight: "700"
   },
   optionTextSelected: {
-    color: "#1d4ed8"
+    color: colors.inverseText
   }
 });

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { getFeatures } from "../api/features";
 import { cancelRequest, getPendingRequestCount, getRequests } from "../api/requests";
 import type { FeatureRequestRecord } from "../types/requests";
 
@@ -43,6 +44,34 @@ function hasPendingRequests(requests: FeatureRequestRecord[], pendingCount: numb
   return requests.some((request) => request.status === "pending");
 }
 
+function mergeRequestLabelsFromFeatures(
+  requests: FeatureRequestRecord[],
+  features: Array<{ id: string; label?: FeatureRequestRecord["label"] }>
+): FeatureRequestRecord[] {
+  const labelByFeatureId = new Map<string, FeatureRequestRecord["label"]>();
+  for (const feature of features) {
+    if (feature.label) {
+      labelByFeatureId.set(feature.id, feature.label);
+    }
+  }
+
+  return requests.map((request) => {
+    if (request.label || !request.featureId) {
+      return request;
+    }
+
+    const label = labelByFeatureId.get(request.featureId);
+    if (!label) {
+      return request;
+    }
+
+    return {
+      ...request,
+      label
+    };
+  });
+}
+
 export function useRequestPolling({
   enabled = true,
   limit = 20,
@@ -76,11 +105,13 @@ export function useRequestPolling({
       }
 
       try {
-        const [nextRequests, nextPendingCount] = await Promise.all([
+        const [nextRequests, nextPendingCount, nextFeatures] = await Promise.all([
           getRequests(limit, offset),
-          getPendingRequestCount()
+          getPendingRequestCount(),
+          getFeatures(Math.max(limit, 100), 0).catch(() => [])
         ]);
-        setRequests(dedupeRequestsById(nextRequests));
+        const requestsWithLabels = mergeRequestLabelsFromFeatures(nextRequests, nextFeatures);
+        setRequests(dedupeRequestsById(requestsWithLabels));
         setPendingCount(nextPendingCount);
         setErrorMessage(null);
       } catch (error) {

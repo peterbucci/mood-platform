@@ -1,4 +1,8 @@
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet } from "react-native";
+
+import { colors } from "../../theme";
+import AppCard from "../ui/AppCard";
+import InfoText from "../ui/InfoText";
 
 type EmptyStateProps = {
   message: string;
@@ -6,23 +10,15 @@ type EmptyStateProps = {
 
 export default function EmptyState({ message }: EmptyStateProps) {
   return (
-    <View style={styles.container}>
-      <Text style={styles.message}>{message}</Text>
-    </View>
+    <AppCard style={styles.container}>
+      <InfoText tone="muted">{message}</InfoText>
+    </AppCard>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#ffffff",
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    borderStyle: "dashed",
-    borderWidth: 1,
-    padding: 16
-  },
-  message: {
-    color: "#4b5563",
-    fontSize: 14
+    borderColor: colors.borderStrong,
+    borderStyle: "dashed"
   }
 });

@@ -1,176 +1,163 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
+import { colors, radius, spacing, typography } from "../../theme";
 import type { FitbitConnectionStatus } from "../../types/fitbit";
+import {
+  formatFitbitExpirationHint,
+  formatFitbitRelativeTime,
+  formatFitbitTimestamp,
+  getFitbitConnectionPresentation
+} from "../../utils/fitbitConnectionFormatting";
+import FitbitActionButtons from "../settings/FitbitActionButtons";
+import FitbitPermissionsSection from "../settings/FitbitPermissionsSection";
+import FitbitStatusIndicator from "../settings/FitbitStatusIndicator";
+import AppCard from "../ui/AppCard";
+import InfoText from "../ui/InfoText";
 
 type FitbitConnectionCardProps = {
+  busyAction?: "connect" | "disconnect" | null;
+  isRefreshing?: boolean;
+  onRefresh?: () => void;
   status: FitbitConnectionStatus;
-  isBusy?: boolean;
   onConnect: () => void;
   onDisconnect?: () => void;
-  onRefresh: () => void;
 };
 
-function formatDate(value: string | null | undefined): string {
-  if (!value) {
-    return "N/A";
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-  return parsed.toLocaleString();
+type DetailTileProps = {
+  hint?: string | null;
+  label: string;
+  value: string;
+};
+
+function DetailTile({ hint, label, value }: DetailTileProps) {
+  return (
+    <View style={styles.detailTile}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={styles.detailValue}>{value}</Text>
+      {hint ? <Text style={styles.detailHint}>{hint}</Text> : null}
+    </View>
+  );
 }
 
 export default function FitbitConnectionCard({
+  busyAction = null,
+  isRefreshing = false,
+  onRefresh,
   status,
-  isBusy = false,
   onConnect,
-  onDisconnect,
-  onRefresh
+  onDisconnect
 }: FitbitConnectionCardProps) {
-  if (!status.connected) {
-    return (
-      <View style={[styles.card, styles.disconnectedCard]}>
-        <Text style={styles.title}>Fitbit not connected</Text>
-        <Text style={styles.description}>
-          Feature requests may not be fulfilled until your Fitbit account is connected.
-        </Text>
-        <Pressable
-          accessibilityRole="button"
-          disabled={isBusy}
-          onPress={onConnect}
-          style={[styles.primaryButton, isBusy ? styles.buttonDisabled : null]}
-        >
-          <Text style={styles.primaryButtonText}>
-            {isBusy ? "Opening Fitbit..." : "Connect Fitbit"}
-          </Text>
-        </Pressable>
-      </View>
-    );
-  }
+  const nowMs = Date.now();
+  const presentation = getFitbitConnectionPresentation(status, nowMs);
+  const lastSyncValue = status.lastSyncAt ? formatFitbitTimestamp(status.lastSyncAt, nowMs) : "No sync yet";
+  const lastSyncHint = status.lastSyncAt ? formatFitbitRelativeTime(status.lastSyncAt, nowMs) : "Waiting for your first sync";
+  const expiresValue = status.expiresAt ? formatFitbitTimestamp(status.expiresAt, nowMs) : "Unavailable";
+  const expiresHint = status.expiresAt ? formatFitbitExpirationHint(status.expiresAt, nowMs) : "Expiration unavailable";
 
   return (
-    <View style={[styles.card, styles.connectedCard]}>
-      <Text style={styles.title}>Fitbit connected</Text>
-      <Text style={styles.description}>Your account is ready for feature fulfillment.</Text>
-      <View style={styles.metaContainer}>
-        <Text style={styles.metaRow}>Status: Connected</Text>
-        <Text style={styles.metaRow}>Fitbit user id: {status.fitbitUserId ?? "N/A"}</Text>
-        <Text style={styles.metaRow}>Last sync: {formatDate(status.lastSyncAt)}</Text>
-        <Text style={styles.metaRow}>Expires: {formatDate(status.expiresAt)}</Text>
-        <Text style={styles.metaRow}>
-          Scopes: {status.scopes && status.scopes.length > 0 ? status.scopes.join(", ") : "N/A"}
-        </Text>
+    <AppCard style={styles.card}>
+      <View style={styles.headerRow}>
+        <View style={styles.headerCopy}>
+          <Text style={styles.title}>{presentation.title}</Text>
+          <InfoText tone="helper">{presentation.description}</InfoText>
+        </View>
+        <FitbitStatusIndicator label={presentation.statusLabel} tone={presentation.tone} />
       </View>
-      <View style={styles.actionRow}>
-        <Pressable
-          accessibilityRole="button"
-          disabled={isBusy}
-          onPress={onRefresh}
-          style={[styles.secondaryButton, isBusy ? styles.buttonDisabled : null]}
-        >
-          <Text style={styles.secondaryButtonText}>Refresh Status</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          disabled={isBusy}
-          onPress={onConnect}
-          style={[styles.secondaryButton, isBusy ? styles.buttonDisabled : null]}
-        >
-          <Text style={styles.secondaryButtonText}>Reconnect Fitbit</Text>
-        </Pressable>
-        {onDisconnect ? (
-          <Pressable
-            accessibilityRole="button"
-            disabled={isBusy}
-            onPress={onDisconnect}
-            style={[styles.dangerButton, isBusy ? styles.buttonDisabled : null]}
-          >
-            <Text style={styles.dangerButtonText}>Disconnect Fitbit</Text>
-          </Pressable>
-        ) : null}
-      </View>
-    </View>
+
+      {status.connected ? (
+        <>
+          <View style={styles.detailGrid}>
+            <DetailTile hint={lastSyncHint} label="Last sync" value={lastSyncValue} />
+            <DetailTile hint={expiresHint} label="Connection expires" value={expiresValue} />
+          </View>
+
+          {status.fitbitUserId ? (
+            <View style={styles.referenceBlock}>
+              <Text style={styles.referenceLabel}>Fitbit user ID</Text>
+              <Text style={styles.referenceValue}>{status.fitbitUserId}</Text>
+            </View>
+          ) : null}
+
+          {status.scopes && status.scopes.length > 0 ? (
+            <FitbitPermissionsSection scopes={status.scopes} />
+          ) : null}
+        </>
+      ) : null}
+
+      <FitbitActionButtons
+        busyAction={busyAction}
+        connected={status.connected}
+        isRefreshing={isRefreshing}
+        onConnect={onConnect}
+        onDisconnect={onDisconnect}
+        onRefresh={onRefresh}
+      />
+    </AppCard>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 12,
+    gap: spacing.md
+  },
+  detailGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    justifyContent: "space-between"
+  },
+  detailHint: {
+    ...typography.helper,
+    color: colors.textMuted
+  },
+  detailLabel: {
+    ...typography.helper,
+    color: colors.textSecondary,
+    fontWeight: "700",
+    textTransform: "uppercase"
+  },
+  detailTile: {
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: radius.md,
     borderWidth: 1,
-    gap: 12,
-    padding: 16
+    gap: spacing.xxs,
+    minHeight: 92,
+    padding: spacing.md,
+    width: "48%"
   },
-  disconnectedCard: {
-    backgroundColor: "#fff7ed",
-    borderColor: "#fed7aa"
+  detailValue: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary
   },
-  connectedCard: {
-    backgroundColor: "#ecfdf5",
-    borderColor: "#86efac"
+  headerCopy: {
+    flex: 1,
+    gap: spacing.xxs
+  },
+  headerRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing.md,
+    justifyContent: "space-between"
+  },
+  referenceBlock: {
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    gap: spacing.xxs,
+    padding: spacing.md
+  },
+  referenceLabel: {
+    ...typography.helper,
+    color: colors.textSecondary
+  },
+  referenceValue: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary
   },
   title: {
-    color: "#111827",
-    fontSize: 20,
-    fontWeight: "700"
-  },
-  description: {
-    color: "#374151",
-    fontSize: 15
-  },
-  metaContainer: {
-    backgroundColor: "#ffffff",
-    borderColor: "#d1fae5",
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 4,
-    padding: 10
-  },
-  metaRow: {
-    color: "#1f2937",
-    fontSize: 13
-  },
-  actionRow: {
-    flexDirection: "column",
-    gap: 8
-  },
-  primaryButton: {
-    backgroundColor: "#2563eb",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  primaryButtonText: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "700",
-    textAlign: "center"
-  },
-  secondaryButton: {
-    backgroundColor: "#111827",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  secondaryButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600",
-    textAlign: "center"
-  },
-  dangerButton: {
-    backgroundColor: "#b91c1c",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  dangerButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600",
-    textAlign: "center"
-  },
-  buttonDisabled: {
-    opacity: 0.65
+    ...typography.sectionTitle,
+    color: colors.textPrimary
   }
 });

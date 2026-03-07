@@ -1,19 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
+import { colors, spacing, typography } from "../../theme";
 import type { MoodCategory, MoodLabelValue } from "../../types/mood";
-import { formatMoodCategory } from "../../utils/moodFormatting";
 import {
   getDefaultEmotionForCategory,
   isMoodCategory,
   isValidEmotionForCategory
 } from "../../utils/moodTaxonomy";
+import AppButton from "../ui/AppButton";
+import AppCard from "../ui/AppCard";
+import InfoText from "../ui/InfoText";
 import CategorySelector from "./CategorySelector";
 import EmotionSelector from "./EmotionSelector";
+import MoodPreviewCard from "./MoodPreviewCard";
 
 type MoodLabelEditorProps = {
   initialLabel: MoodLabelValue;
   onSaveLabel: (category: MoodCategory, emotion: string) => Promise<void>;
+  onCancel?: () => void;
+  showTitle?: boolean;
 };
 
 type EditableMoodSelection = {
@@ -56,12 +62,16 @@ function getInitialSelection(label: MoodLabelValue): EditableMoodSelection {
   };
 }
 
-export default function MoodLabelEditor({ initialLabel, onSaveLabel }: MoodLabelEditorProps) {
+export default function MoodLabelEditor({
+  initialLabel,
+  onSaveLabel,
+  onCancel,
+  showTitle = true
+}: MoodLabelEditorProps) {
   const [selectedCategory, setSelectedCategory] = useState<MoodCategory | null>(null);
   const [selectedEmotion, setSelectedEmotion] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const inFlightRef = useRef(false);
 
   const isInitiallyLabeled = useMemo(() => {
@@ -69,12 +79,22 @@ export default function MoodLabelEditor({ initialLabel, onSaveLabel }: MoodLabel
     return Boolean(initial.category && initial.emotion);
   }, [initialLabel]);
 
+  const previewLabel = useMemo<MoodLabelValue>(() => {
+    if (!selectedCategory || !selectedEmotion) {
+      return undefined;
+    }
+
+    return {
+      category: selectedCategory,
+      emotion: selectedEmotion
+    };
+  }, [selectedCategory, selectedEmotion]);
+
   useEffect(() => {
     const initial = getInitialSelection(initialLabel);
     setSelectedCategory(initial.category);
     setSelectedEmotion(initial.emotion);
     setErrorMessage(null);
-    setSuccessMessage(null);
   }, [initialLabel]);
 
   const handleSelectCategory = useCallback(
@@ -87,7 +107,6 @@ export default function MoodLabelEditor({ initialLabel, onSaveLabel }: MoodLabel
         return getDefaultEmotionForCategory(category);
       });
       setErrorMessage(null);
-      setSuccessMessage(null);
     },
     []
   );
@@ -95,13 +114,12 @@ export default function MoodLabelEditor({ initialLabel, onSaveLabel }: MoodLabel
   const handleSelectEmotion = useCallback((emotion: string) => {
     setSelectedEmotion(emotion);
     setErrorMessage(null);
-    setSuccessMessage(null);
   }, []);
 
   const handleSave = useCallback(async () => {
     if (inFlightRef.current || !selectedCategory || !selectedEmotion) {
       if (!selectedCategory || !selectedEmotion) {
-        setErrorMessage("Please select both category and emotion.");
+        setErrorMessage("Please select both a category and an emotion.");
       }
       return;
     }
@@ -109,11 +127,9 @@ export default function MoodLabelEditor({ initialLabel, onSaveLabel }: MoodLabel
     inFlightRef.current = true;
     setIsSaving(true);
     setErrorMessage(null);
-    setSuccessMessage(null);
 
     try {
       await onSaveLabel(selectedCategory, selectedEmotion);
-      setSuccessMessage("Mood label saved.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to save mood label.";
       setErrorMessage(message);
@@ -124,83 +140,96 @@ export default function MoodLabelEditor({ initialLabel, onSaveLabel }: MoodLabel
   }, [onSaveLabel, selectedCategory, selectedEmotion]);
 
   return (
-    <View style={styles.card}>
-      <Text style={styles.title}>{isInitiallyLabeled ? "Update Mood Label" : "Add Mood Label"}</Text>
-      <CategorySelector
-        disabled={isSaving}
-        onSelectCategory={handleSelectCategory}
-        selectedCategory={selectedCategory}
-      />
-      <EmotionSelector
-        category={selectedCategory}
-        disabled={isSaving || !selectedCategory}
-        onSelectEmotion={handleSelectEmotion}
-        selectedEmotion={selectedEmotion}
-      />
-      <Text style={styles.selectionText} testID="mood-editor-category-value">
-        Selected Category: {selectedCategory ? formatMoodCategory(selectedCategory) : "Not selected"}
-      </Text>
-      <Text style={styles.selectionText} testID="mood-editor-emotion-value">
-        Selected Emotion: {selectedEmotion ?? "Not selected"}
-      </Text>
+    <View style={styles.container}>
+      <MoodPreviewCard label={previewLabel} />
 
-      <Pressable
-        accessibilityRole="button"
-        disabled={isSaving || !selectedCategory || !selectedEmotion}
-        onPress={handleSave}
-        style={[styles.saveButton, isSaving || !selectedCategory || !selectedEmotion ? styles.saveButtonDisabled : null]}
-        testID="mood-save-button"
-      >
-        <Text style={styles.saveButtonText}>{isSaving ? "Saving..." : "Save Label"}</Text>
-      </Pressable>
+      <AppCard style={styles.selectionCard}>
+        {showTitle ? (
+          <View style={styles.header}>
+            <Text style={styles.title}>{isInitiallyLabeled ? "Update Mood Label" : "Add Mood Label"}</Text>
+            <InfoText tone="helper">Choose a category first, then confirm the emotion that fits best.</InfoText>
+          </View>
+        ) : (
+          <View style={styles.header}>
+            <Text style={styles.title}>Mood Selection</Text>
+            <InfoText tone="helper">Choose a category first, then confirm the emotion that fits best.</InfoText>
+          </View>
+        )}
 
-      {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-      {successMessage ? <Text style={styles.successText}>{successMessage}</Text> : null}
+        <View style={styles.selectionGroup}>
+          <InfoText tone="helper">Start with the broad mood category.</InfoText>
+          <CategorySelector
+            disabled={isSaving}
+            onSelectCategory={handleSelectCategory}
+            selectedCategory={selectedCategory}
+          />
+        </View>
+
+        <View style={styles.selectionGroup}>
+          <InfoText tone="helper">Then pick the emotion that feels most accurate.</InfoText>
+          <EmotionSelector
+            category={selectedCategory}
+            disabled={isSaving || !selectedCategory}
+            onSelectEmotion={handleSelectEmotion}
+            selectedEmotion={selectedEmotion}
+          />
+        </View>
+
+        <View style={styles.actions}>
+          <AppButton
+            disabled={isSaving || !selectedCategory || !selectedEmotion}
+            isLoading={isSaving}
+            label="Save Label"
+            onPress={handleSave}
+            style={styles.primaryButton}
+            testID="mood-save-button"
+          />
+          {onCancel ? (
+            <AppButton
+              disabled={isSaving}
+              label="Cancel"
+              onPress={onCancel}
+              style={styles.secondaryButton}
+              variant="outline"
+            />
+          ) : null}
+        </View>
+
+        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+      </AppCard>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: "#ffffff",
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 10,
-    padding: 14
+  actions: {
+    flexDirection: "row",
+    gap: spacing.sm
   },
-  title: {
-    color: "#111827",
-    fontSize: 16,
-    fontWeight: "700"
-  },
-  selectionText: {
-    color: "#4b5563",
-    fontSize: 12
-  },
-  saveButton: {
-    alignSelf: "flex-start",
-    backgroundColor: "#111827",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  saveButtonDisabled: {
-    opacity: 0.6
-  },
-  saveButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600"
+  container: {
+    gap: spacing.md
   },
   errorText: {
-    color: "#b91c1c",
-    fontSize: 13,
-    fontWeight: "600"
+    ...typography.bodyStrong,
+    color: colors.dangerText
   },
-  successText: {
-    color: "#166534",
-    fontSize: 13,
-    fontWeight: "600"
+  header: {
+    gap: spacing.xxs
+  },
+  primaryButton: {
+    flex: 1
+  },
+  secondaryButton: {
+    minWidth: 110
+  },
+  selectionCard: {
+    gap: spacing.md
+  },
+  selectionGroup: {
+    gap: spacing.xs
+  },
+  title: {
+    ...typography.cardTitle,
+    color: colors.textPrimary
   }
 });

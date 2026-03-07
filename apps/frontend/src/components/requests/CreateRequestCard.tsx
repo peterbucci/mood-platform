@@ -1,16 +1,24 @@
 import { useCallback, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import { createFeatureRequest } from "../../api/requests";
+import { colors, spacing, typography } from "../../theme";
 import CategorySelector from "../mood/CategorySelector";
 import EmotionSelector from "../mood/EmotionSelector";
 import type { CreateFeatureRequestResponse } from "../../types/requests";
 import type { MoodCategory } from "../../types/mood";
-import { formatMoodCategory } from "../../utils/moodFormatting";
 import { getDefaultEmotionForCategory, isValidEmotionForCategory } from "../../utils/moodTaxonomy";
+import AppButton from "../ui/AppButton";
+import AppCard from "../ui/AppCard";
+import InfoText from "../ui/InfoText";
+
+type MoodSelection = {
+  category: MoodCategory;
+  emotion: string;
+};
 
 type CreateRequestCardProps = {
-  onCreated?: (request: CreateFeatureRequestResponse) => Promise<void> | void;
+  onCreated?: (request: CreateFeatureRequestResponse, moodSelection: MoodSelection) => Promise<void> | void;
 };
 
 const DEFAULT_ERROR_MESSAGE = "Unable to create request right now.";
@@ -25,6 +33,7 @@ export default function CreateRequestCard({ onCreated }: CreateRequestCardProps)
 
   const handleSelectCategory = useCallback((category: MoodCategory) => {
     setSelectedCategory(category);
+    setLatestCreated(null);
     setSelectedEmotion((current) => {
       if (current && isValidEmotionForCategory(category, current)) {
         return current;
@@ -36,6 +45,7 @@ export default function CreateRequestCard({ onCreated }: CreateRequestCardProps)
 
   const handleSelectEmotion = useCallback((emotion: string) => {
     setSelectedEmotion(emotion);
+    setLatestCreated(null);
     setErrorMessage(null);
   }, []);
 
@@ -49,6 +59,7 @@ export default function CreateRequestCard({ onCreated }: CreateRequestCardProps)
     inFlightRef.current = true;
     setIsSubmitting(true);
     setErrorMessage(null);
+    setLatestCreated(null);
 
     try {
       const created = await createFeatureRequest({
@@ -59,7 +70,10 @@ export default function CreateRequestCard({ onCreated }: CreateRequestCardProps)
       });
       setLatestCreated(created);
       if (onCreated) {
-        await onCreated(created);
+        await onCreated(created, {
+          category: selectedCategory,
+          emotion: selectedEmotion
+        });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE;
@@ -71,112 +85,85 @@ export default function CreateRequestCard({ onCreated }: CreateRequestCardProps)
   }, [onCreated, selectedCategory, selectedEmotion]);
 
   return (
-    <View style={styles.card}>
-      <Text style={styles.title}>Log Emotion + Capture Features</Text>
-      <Text style={styles.description}>
-        Choose how you feel right now, then submit a feature capture request. The request is queued
-        immediately.
-      </Text>
+    <AppCard style={styles.card}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Capture a New Snapshot</Text>
+        <InfoText tone="helper">Log how you feel and capture a new feature snapshot.</InfoText>
+      </View>
       <CategorySelector
         disabled={isSubmitting}
         onSelectCategory={handleSelectCategory}
         selectedCategory={selectedCategory}
       />
-      <EmotionSelector
-        category={selectedCategory}
-        disabled={isSubmitting || !selectedCategory}
-        onSelectEmotion={handleSelectEmotion}
-        selectedEmotion={selectedEmotion}
-      />
-      <Text style={styles.selectionText}>
-        Selected Category:{" "}
-        {selectedCategory ? formatMoodCategory(selectedCategory) : "Not selected"}
-      </Text>
-      <Text style={styles.selectionText}>Selected Emotion: {selectedEmotion ?? "Not selected"}</Text>
-      <Pressable
-        accessibilityRole="button"
+      {selectedCategory ? (
+        <View style={styles.emotionSection}>
+          <InfoText tone="helper">Pick the emotion that fits best.</InfoText>
+          <EmotionSelector
+            category={selectedCategory}
+            disabled={isSubmitting}
+            onSelectEmotion={handleSelectEmotion}
+            selectedEmotion={selectedEmotion}
+          />
+        </View>
+      ) : (
+        <InfoText tone="muted">Choose a category to see matching emotions.</InfoText>
+      )}
+      <AppButton
         disabled={isSubmitting || !selectedCategory || !selectedEmotion}
+        isLoading={isSubmitting}
+        label="Capture Snapshot"
         onPress={handleCreate}
-        style={[
-          styles.button,
-          isSubmitting || !selectedCategory || !selectedEmotion ? styles.buttonDisabled : null
-        ]}
+        style={styles.actionButton}
         testID="log-emotion-button"
-      >
-        <Text style={styles.buttonText}>{isSubmitting ? "Logging emotion..." : "Log Emotion"}</Text>
-      </Pressable>
+      />
       {latestCreated ? (
-        <View style={styles.successContainer}>
-          <Text style={styles.successTitle}>Emotion logged and request created</Text>
-          <Text style={styles.successText}>Request ID: {latestCreated.requestId}</Text>
-          <Text style={styles.successText}>Status: {latestCreated.status}</Text>
-          <Text style={styles.successText}>
-            Mood: {selectedCategory} / {selectedEmotion}
+        <View style={styles.feedbackRow}>
+          <Text style={styles.feedbackTitle}>
+            {latestCreated.status === "pending" ? "Capture in progress" : "Snapshot queued"}
           </Text>
+          <InfoText tone={latestCreated.status === "pending" ? "warning" : "success"}>
+            Your request was added to the queue.
+          </InfoText>
         </View>
       ) : null}
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-    </View>
+    </AppCard>
   );
 }
 
 const styles = StyleSheet.create({
+  actionButton: {
+    alignSelf: "flex-start",
+    minWidth: 168
+  },
   card: {
-    backgroundColor: "#ffffff",
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
+    gap: spacing.sm
+  },
+  emotionSection: {
+    gap: spacing.xs
+  },
+  feedbackRow: {
+    backgroundColor: colors.warningSurface,
+    borderColor: colors.warningBorder,
+    borderRadius: 10,
     borderWidth: 1,
-    gap: 10,
-    padding: 16
+    gap: spacing.xxs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  feedbackTitle: {
+    ...typography.bodyStrong,
+    color: colors.warningText
+  },
+  header: {
+    gap: spacing.xxs
   },
   title: {
-    color: "#111827",
-    fontSize: 18,
-    fontWeight: "700"
-  },
-  description: {
-    color: "#4b5563",
-    fontSize: 14
-  },
-  selectionText: {
-    color: "#4b5563",
-    fontSize: 12
-  },
-  button: {
-    backgroundColor: "#2563eb",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  buttonDisabled: {
-    opacity: 0.65
-  },
-  buttonText: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "700",
-    textAlign: "center"
-  },
-  successContainer: {
-    backgroundColor: "#ecfdf5",
-    borderColor: "#86efac",
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 4,
-    padding: 10
-  },
-  successTitle: {
-    color: "#065f46",
-    fontSize: 14,
-    fontWeight: "700"
-  },
-  successText: {
-    color: "#065f46",
-    fontSize: 13
+    ...typography.sectionTitle,
+    color: colors.textPrimary
   },
   errorText: {
-    color: "#991b1b",
-    fontSize: 14,
-    fontWeight: "600"
+    ...typography.bodyStrong,
+    color: colors.dangerText
   }
 });

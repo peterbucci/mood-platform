@@ -1,22 +1,22 @@
 import type { ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
+import { colors, spacing, typography } from "../../theme";
+
 type HeaderProps = {
   appName?: string;
-  currentRouteName?: string;
   children?: ReactNode;
 };
 
 export default function Header({
   appName = "Mood Platform",
-  currentRouteName,
   children
 }: HeaderProps) {
   return (
     <View style={styles.container}>
       <View style={styles.titleBlock}>
         <Text style={styles.title}>{appName}</Text>
-        {currentRouteName ? <Text style={styles.subtitle}>{currentRouteName}</Text> : null}
+        <Text style={styles.subtitle}>Track mood and understand your daily signals.</Text>
       </View>
       {children}
     </View>
@@ -25,21 +25,20 @@ export default function Header({
 
 const styles = StyleSheet.create({
   container: {
-    borderBottomColor: "#d1d5db",
+    borderBottomColor: colors.borderStrong,
     borderBottomWidth: 1,
-    gap: 10,
-    paddingBottom: 12
-  },
-  titleBlock: {
-    gap: 2
-  },
-  title: {
-    color: "#111827",
-    fontSize: 24,
-    fontWeight: "700"
+    gap: spacing.sm,
+    paddingBottom: spacing.md
   },
   subtitle: {
-    color: "#6b7280",
-    fontSize: 14
+    ...typography.body,
+    color: colors.textMuted
+  },
+  title: {
+    ...typography.title,
+    color: colors.textPrimary
+  },
+  titleBlock: {
+    gap: spacing.xxs
   }
 });

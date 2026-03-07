@@ -1,6 +1,8 @@
 import { useNavigation } from "@react-navigation/native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { colors, radius, spacing, typography } from "../../theme";
+
 type NavigationProps = {
   currentRouteName?: string;
 };
@@ -40,26 +42,26 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10
+    gap: spacing.sm
   },
   link: {
-    backgroundColor: "#f3f4f6",
-    borderColor: "#d1d5db",
-    borderRadius: 999,
+    backgroundColor: colors.neutralSurface,
+    borderColor: colors.neutralBorder,
+    borderRadius: radius.pill,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 6
+    minHeight: 34,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs
   },
   linkActive: {
-    backgroundColor: "#111827",
-    borderColor: "#111827"
+    backgroundColor: colors.textPrimary,
+    borderColor: colors.textPrimary
   },
   linkLabel: {
-    color: "#1f2937",
-    fontSize: 14,
-    fontWeight: "600"
+    ...typography.bodyStrong,
+    color: colors.textSecondary
   },
   linkLabelActive: {
-    color: "#ffffff"
+    color: colors.inverseText
   }
 });

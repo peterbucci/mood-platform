@@ -1,41 +1,50 @@
 import { StyleSheet, Text, View } from "react-native";
 
+import { colors, spacing, typography } from "../../theme";
 import type { FeatureSectionRow } from "../../utils/featureFormatting";
+import AppCard from "../ui/AppCard";
 import FeatureValueRow from "./FeatureValueRow";
 
 type FeatureSectionCardProps = {
-  title: string;
   rows: FeatureSectionRow[];
+  subtitle?: string;
+  title: string;
 };
 
-export default function FeatureSectionCard({ title, rows }: FeatureSectionCardProps) {
+export default function FeatureSectionCard({ rows, subtitle, title }: FeatureSectionCardProps) {
   return (
-    <View style={styles.card}>
-      <Text style={styles.title}>{title}</Text>
+    <AppCard>
+      <View style={styles.header}>
+        <Text style={styles.title}>{title}</Text>
+        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+      </View>
       <View style={styles.rows}>
-        {rows.map((row) => (
-          <FeatureValueRow key={`${title}-${row.label}`} label={row.label} value={row.value} />
+        {rows.map((row, index) => (
+          <FeatureValueRow
+            key={`${title}-${row.id}`}
+            label={row.label}
+            showDivider={index > 0}
+            value={row.value}
+          />
         ))}
       </View>
-    </View>
+    </AppCard>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: "#ffffff",
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 10,
-    padding: 14
-  },
-  title: {
-    color: "#111827",
-    fontSize: 16,
-    fontWeight: "700"
+  header: {
+    gap: spacing.xxs
   },
   rows: {
-    gap: 7
+    gap: 0
+  },
+  subtitle: {
+    ...typography.body,
+    color: colors.textSecondary
+  },
+  title: {
+    ...typography.cardTitle,
+    color: colors.textPrimary
   }
 });

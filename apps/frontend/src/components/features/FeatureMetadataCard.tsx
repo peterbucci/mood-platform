@@ -1,6 +1,8 @@
 import { StyleSheet, Text, View } from "react-native";
 
+import { colors, spacing, typography } from "../../theme";
 import type { FeatureMetadataViewModel } from "../../utils/featureFormatting";
+import AppCard from "../ui/AppCard";
 import FeatureValueRow from "./FeatureValueRow";
 
 type FeatureMetadataCardProps = {
@@ -9,35 +11,36 @@ type FeatureMetadataCardProps = {
 
 export default function FeatureMetadataCard({ metadata }: FeatureMetadataCardProps) {
   return (
-    <View style={styles.card}>
-      <Text style={styles.title}>Feature Metadata</Text>
+    <AppCard tone="subtle">
+      <View style={styles.header}>
+        <Text style={styles.title}>Metadata</Text>
+        <Text style={styles.subtitle}>Technical context for this snapshot.</Text>
+      </View>
       <View style={styles.rows}>
         <FeatureValueRow label="Source" value={metadata.source} />
-        <FeatureValueRow label="Created At" value={metadata.createdAt} />
-        <FeatureValueRow label="Extractor Version" value={metadata.extractorVersion} />
-        <FeatureValueRow label="Window Start" value={metadata.windowStart} />
-        <FeatureValueRow label="Window End" value={metadata.windowEnd} />
-        <FeatureValueRow label="Source Timezone" value={metadata.sourceTimezone} />
+        <FeatureValueRow label="Created At" showDivider value={metadata.createdAt} />
+        <FeatureValueRow label="Extractor Version" showDivider value={metadata.extractorVersion} />
+        <FeatureValueRow label="Window Start" showDivider value={metadata.windowStart} />
+        <FeatureValueRow label="Window End" showDivider value={metadata.windowEnd} />
+        <FeatureValueRow label="Source Timezone" showDivider value={metadata.sourceTimezone} />
       </View>
-    </View>
+    </AppCard>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: "#f8fafc",
-    borderColor: "#cbd5e1",
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 10,
-    padding: 14
-  },
-  title: {
-    color: "#0f172a",
-    fontSize: 16,
-    fontWeight: "700"
+  header: {
+    gap: spacing.xxs
   },
   rows: {
-    gap: 7
+    gap: 0
+  },
+  subtitle: {
+    ...typography.body,
+    color: colors.textSecondary
+  },
+  title: {
+    ...typography.cardTitle,
+    color: colors.textPrimary
   }
 });

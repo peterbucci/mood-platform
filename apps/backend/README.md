@@ -74,6 +74,26 @@ Each request persists a row in `requests` with:
 - `status = "pending"`
 - `source = "phone"`
 
+## Seed Demo Data
+
+Populate synthetic request/feature/label history over the last 30 days:
+
+```bash
+python apps/backend/scripts/seed_recent_requests_features_labels.py --count 100 --days 30
+```
+
+Useful options:
+
+- `--user-id <uuid>` override owner user id (default uses `OWNER_USER_ID` or fallback owner).
+- `--append` keep existing seeded rows and add more.
+- `--source <text>` custom source tag (default: `seed-script`).
+- `--fulfilled-ratio 0.75` controls status mix (`canceled` is remainder; no pending rows are generated).
+
+Notes:
+
+- Requires `DATABASE_URL` to be set.
+- By default, previously seeded rows for the same user/source are replaced.
+
 Feature read/delete endpoints:
 
 - `GET /features/latest`

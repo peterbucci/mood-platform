@@ -1,18 +1,33 @@
 import { StyleSheet, View } from "react-native";
 
 import type { FeatureRecord } from "../../types/features";
-import FeatureRow from "./FeatureRow";
+import { groupFeaturesByDate } from "../../utils/featureHistoryFormatting";
+import FeatureDateGroup from "./FeatureDateGroup";
+import FeatureHistoryItem from "./FeatureHistoryItem";
 
 type FeatureListProps = {
   features: FeatureRecord[];
+  nowMs?: number;
   onPressFeature: (featureId: string) => void;
 };
 
-export default function FeatureList({ features, onPressFeature }: FeatureListProps) {
+export default function FeatureList({ features, nowMs = Date.now(), onPressFeature }: FeatureListProps) {
+  const groups = groupFeaturesByDate(features, nowMs);
+
   return (
     <View style={styles.listContent}>
-      {features.map((feature) => (
-        <FeatureRow key={feature.id} feature={feature} onPress={onPressFeature} />
+      {groups.map((group) => (
+        <FeatureDateGroup key={group.key} title={group.title}>
+          {group.features.map((feature, index) => (
+            <FeatureHistoryItem
+              feature={feature}
+              key={feature.id}
+              nowMs={nowMs}
+              onPress={onPressFeature}
+              showDivider={index > 0}
+            />
+          ))}
+        </FeatureDateGroup>
       ))}
     </View>
   );
@@ -20,7 +35,7 @@ export default function FeatureList({ features, onPressFeature }: FeatureListPro
 
 const styles = StyleSheet.create({
   listContent: {
-    gap: 8,
-    paddingBottom: 12
+    gap: 16,
+    paddingBottom: 4
   }
 });
