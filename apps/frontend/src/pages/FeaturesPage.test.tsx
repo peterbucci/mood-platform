@@ -79,7 +79,7 @@ describe("FeaturesPage", () => {
     const { getByText } = render(<FeaturesPage />);
 
     await waitFor(() => {
-      expect(getByText("No feature captures yet")).toBeTruthy();
+      expect(getByText("No feature captures yet. Request a capture to build your history.")).toBeTruthy();
     });
   });
 
@@ -91,7 +91,7 @@ describe("FeaturesPage", () => {
     await waitFor(() => {
       expect(getByText("Something went wrong")).toBeTruthy();
       expect(getByText("Failed to load feature history.")).toBeTruthy();
-      expect(getByText("Retry")).toBeTruthy();
+      expect(getByText("Try Again")).toBeTruthy();
     });
   });
 });

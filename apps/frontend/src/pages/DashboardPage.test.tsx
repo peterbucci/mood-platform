@@ -106,7 +106,7 @@ describe("DashboardPage", () => {
     await waitFor(() => {
       expect(getByText("Something went wrong")).toBeTruthy();
       expect(getByText("Failed to fetch latest feature snapshot.")).toBeTruthy();
-      expect(getByText("Retry")).toBeTruthy();
+      expect(getByText("Try Again")).toBeTruthy();
     });
   });
 

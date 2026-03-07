@@ -217,7 +217,7 @@ describe("FeatureDetailPage", () => {
     await waitFor(() => {
       expect(getByText("Something went wrong")).toBeTruthy();
       expect(getByText("Failed to load feature detail.")).toBeTruthy();
-      expect(getByText("Retry")).toBeTruthy();
+      expect(getByText("Try Again")).toBeTruthy();
     });
   });
 

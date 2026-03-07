@@ -129,7 +129,7 @@ describe("RequestsPage", () => {
     await waitFor(() => {
       expect(getByText("Something went wrong")).toBeTruthy();
       expect(getByText("Unable to load request list.")).toBeTruthy();
-      expect(getByText("Retry")).toBeTruthy();
+      expect(getByText("Try Again")).toBeTruthy();
     });
   });
 
@@ -168,7 +168,7 @@ describe("RequestsPage", () => {
 
     await waitFor(() => {
       expect(getByText("Pending")).toBeTruthy();
-      expect(getByText("Auto-refreshing pending requests every few seconds...")).toBeTruthy();
+      expect(getByText("Auto-updating while requests are pending.")).toBeTruthy();
     });
 
     act(() => {
@@ -205,7 +205,7 @@ describe("RequestsPage", () => {
 
     await waitFor(() => {
       expect(getByText("Fulfilled")).toBeTruthy();
-      expect(queryByText("Auto-refreshing pending requests every few seconds...")).toBeNull();
+      expect(queryByText("Auto-updating while requests are pending.")).toBeNull();
     });
 
     act(() => {

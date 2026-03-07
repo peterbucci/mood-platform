@@ -61,7 +61,7 @@ describe("SettingsScreen", () => {
       expect(getByText("Something went wrong")).toBeTruthy();
     });
     expect(getByText("Status request failed.")).toBeTruthy();
-    expect(getByText("Retry")).toBeTruthy();
+    expect(getByText("Try Again")).toBeTruthy();
   });
 
   it("calls OAuth start when connect is tapped", async () => {
