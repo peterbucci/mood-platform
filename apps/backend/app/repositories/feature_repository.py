@@ -60,6 +60,18 @@ class FeatureRepository:
         )
         return result.scalars().all()
 
+    def get_latest_label_for_feature(self, *, user_id: str, feature_id: str) -> Label | None:
+        result = self._session.execute(
+            sa.select(Label)
+            .where(
+                Label.user_id == user_id,
+                Label.feature_id == feature_id,
+            )
+            .order_by(Label.created_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     def delete_feature_labels(
         self,
         *,

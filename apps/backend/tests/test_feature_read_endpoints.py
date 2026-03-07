@@ -99,6 +99,30 @@ def test_feature_read_endpoints_return_expected_payload_and_pagination(monkeypat
         db_session._session_factory.cache_clear()
 
 
+def test_feature_read_endpoints_include_latest_label_when_present(monkeypatch) -> None:
+    with _temporary_database() as database_url:
+        _run_alembic_upgrade(database_url=database_url)
+        _seed_features(database_url=database_url)
+        _seed_label_for_feature(
+            database_url=database_url,
+            feature_id="22222222-2222-2222-2222-222222222222",
+            request_id="req-feature-label-1",
+            category="calm",
+            emotion_word="Relaxed",
+        )
+        _configure_runtime_env(monkeypatch=monkeypatch, database_url=database_url)
+
+        with TestClient(app) as client:
+            response = client.get("/features/22222222-2222-2222-2222-222222222222")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["id"] == "22222222-2222-2222-2222-222222222222"
+        assert payload["label"] == {"category": "calm", "emotionWord": "Relaxed"}
+
+        db_session._session_factory.cache_clear()
+
+
 class _temporary_database:
     def __enter__(self) -> str:
         base_database_url = os.getenv("DATABASE_URL", "").strip()
@@ -187,6 +211,49 @@ def _seed_features(*, database_url: str) -> None:
                     1700000200,
                     "phone-request",
                     json.dumps({"steps": 3000, "mood": "stressed"}),
+                ),
+            )
+        connection.commit()
+
+
+def _seed_label_for_feature(
+    *,
+    database_url: str,
+    feature_id: str,
+    request_id: str,
+    category: str,
+    emotion_word: str,
+) -> None:
+    with psycopg.connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO requests (id, "userId", "createdAt", status, "featureId", source)
+                VALUES (%s, %s, %s, 'fulfilled', %s, %s)
+                """,
+                (
+                    request_id,
+                    CURRENT_USER_ID,
+                    1700000999,
+                    feature_id,
+                    "phone-request",
+                ),
+            )
+            cursor.execute(
+                """
+                INSERT INTO labels (
+                    id, "userId", "featureId", "requestId", label, "emotionWord", category
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    str(uuid.uuid4()),
+                    CURRENT_USER_ID,
+                    feature_id,
+                    request_id,
+                    "Linked label",
+                    emotion_word,
+                    category,
                 ),
             )
         connection.commit()

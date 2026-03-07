@@ -15,7 +15,7 @@ from app.services.feature_service import (
 router = APIRouter(prefix="/features", tags=["features"])
 
 
-@router.get("/latest", response_model=FeatureResponse)
+@router.get("/latest", response_model=FeatureResponse, response_model_exclude_none=True)
 def get_latest_feature(
     feature_service: Annotated[FeatureService, Depends(get_feature_service)],
 ) -> FeatureResponse:
@@ -31,7 +31,7 @@ def get_latest_feature(
     return FeatureResponse(**feature)
 
 
-@router.get("", response_model=FeatureListResponse)
+@router.get("", response_model=FeatureListResponse, response_model_exclude_none=True)
 def list_features(
     feature_service: Annotated[FeatureService, Depends(get_feature_service)],
     limit: int = Query(default=20, ge=1, le=100),
@@ -51,7 +51,7 @@ def list_features(
     )
 
 
-@router.get("/{feature_id}", response_model=FeatureResponse)
+@router.get("/{feature_id}", response_model=FeatureResponse, response_model_exclude_none=True)
 def get_feature_by_id(
     feature_id: str,
     feature_service: Annotated[FeatureService, Depends(get_feature_service)],

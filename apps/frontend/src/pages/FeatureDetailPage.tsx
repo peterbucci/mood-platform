@@ -2,17 +2,19 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { getFeatureById } from "../api/features";
+import { getFeatureById, setFeatureLabel } from "../api/features";
 import { isApiError } from "../api/errors";
 import FeatureMetadataCard from "../components/features/FeatureMetadataCard";
 import FeatureSectionCard from "../components/features/FeatureSectionCard";
 import RawJsonToggle from "../components/features/RawJsonToggle";
+import MoodLabelEditor from "../components/mood/MoodLabelEditor";
 import MoodLabelCard from "../components/mood/MoodLabelCard";
 import EmptyState from "../components/states/EmptyState";
 import ErrorState from "../components/states/ErrorState";
 import LoadingState from "../components/states/LoadingState";
 import type { RootStackParamList } from "../router/AppRouter";
 import type { FeatureRecord } from "../types/features";
+import type { MoodCategory } from "../types/mood";
 import { buildFeatureSections, extractFeatureMetadata } from "../utils/featureFormatting";
 
 type FeatureDetailPageProps = NativeStackScreenProps<RootStackParamList, "FeatureDetail">;
@@ -51,6 +53,21 @@ export default function FeatureDetailPage({ route }: FeatureDetailPageProps) {
   const metadata = useMemo(() => (feature ? extractFeatureMetadata(feature) : null), [feature]);
   const sections = useMemo(() => (feature ? buildFeatureSections(feature.data) : []), [feature]);
 
+  const handleSaveMoodLabel = useCallback(
+    async (category: MoodCategory, emotion: string) => {
+      const nextLabel = await setFeatureLabel(id, category, emotion);
+      setFeature((current) =>
+        current
+          ? {
+              ...current,
+              label: nextLabel
+            }
+          : current
+      );
+    },
+    [id]
+  );
+
   if (viewState === "loading") {
     return <LoadingState message="Loading feature detail..." />;
   }
@@ -85,6 +102,7 @@ export default function FeatureDetailPage({ route }: FeatureDetailPageProps) {
       <Text style={styles.title}>Feature Detail</Text>
       <Text style={styles.description}>Readable breakdown for feature snapshot {id}.</Text>
       <MoodLabelCard label={feature.label} />
+      <MoodLabelEditor initialLabel={feature.label} onSaveLabel={handleSaveMoodLabel} />
       <FeatureMetadataCard metadata={metadata} />
       {sections.map((section) => (
         <FeatureSectionCard key={section.title} rows={section.rows} title={section.title} />

@@ -80,7 +80,7 @@ describe("DashboardPage", () => {
       expect(getByText("v2.1.0")).toBeTruthy();
       expect(getByText("Mood")).toBeTruthy();
       expect(getByText("Energized")).toBeTruthy();
-      expect(getByText("— Happy")).toBeTruthy();
+      expect(getByText("- Happy")).toBeTruthy();
     });
   });
 

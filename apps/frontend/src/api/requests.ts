@@ -1,4 +1,5 @@
 import type {
+  CreateFeatureRequestInput,
   CreateFeatureRequestResponse,
   FeatureRequestRecord,
   PendingRequestCountResponse,
@@ -39,8 +40,14 @@ function toRequestRecord(payload: unknown): FeatureRequestRecord | null {
   };
 }
 
-export async function createFeatureRequest(): Promise<CreateFeatureRequestResponse> {
-  const payload = await apiPost<Partial<CreateFeatureRequestResponse>>("/features/request");
+export async function createFeatureRequest(
+  input?: CreateFeatureRequestInput
+): Promise<CreateFeatureRequestResponse> {
+  const body =
+    input && Object.prototype.hasOwnProperty.call(input, "clientFeatures")
+      ? { clientFeatures: input.clientFeatures ?? null }
+      : undefined;
+  const payload = await apiPost<Partial<CreateFeatureRequestResponse>>("/features/request", body);
 
   const status = parseRequestStatus(payload?.status);
   if (!payload || typeof payload.requestId !== "string" || status === null) {

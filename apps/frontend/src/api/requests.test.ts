@@ -37,6 +37,34 @@ describe("requests api module", () => {
     );
   });
 
+  it("creates feature request with client features payload", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { createFeatureRequest } = require("./requests");
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      createMockResponse({ body: { requestId: "r-2", status: "pending" }, status: 200 })
+    );
+
+    await createFeatureRequest({
+      clientFeatures: {
+        moodCategory: "calm",
+        moodEmotion: "Relaxed"
+      }
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://api.example.test/features/request",
+      expect.objectContaining({
+        body: JSON.stringify({
+          clientFeatures: {
+            moodCategory: "calm",
+            moodEmotion: "Relaxed"
+          }
+        }),
+        method: "POST"
+      })
+    );
+  });
+
   it("loads requests and pending count from expected endpoints", async () => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { getPendingRequestCount, getRequests } = require("./requests");

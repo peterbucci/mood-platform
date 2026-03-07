@@ -1,5 +1,9 @@
 export type RequestStatus = "pending" | "fulfilled" | "canceled";
 
+export type CreateFeatureRequestInput = {
+  clientFeatures?: Record<string, unknown> | null;
+};
+
 export type FeatureRequestRecord = {
   id: string;
   userId: string;
