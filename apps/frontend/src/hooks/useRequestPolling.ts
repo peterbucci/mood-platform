@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { getPendingRequestCount, getRequests } from "../api/requests";
+import { cancelRequest, getPendingRequestCount, getRequests } from "../api/requests";
 import type { FeatureRequestRecord } from "../types/requests";
 
 export const DEFAULT_REQUEST_POLL_INTERVAL_MS = 7000;
@@ -15,6 +15,9 @@ type UseRequestPollingOptions = {
 };
 
 type UseRequestPollingResult = {
+  cancelErrorById: Record<string, string>;
+  cancelPendingRequest: (requestId: string) => Promise<void>;
+  cancelingById: Record<string, boolean>;
   requests: FeatureRequestRecord[];
   pendingCount: number;
   errorMessage: string | null;
@@ -46,6 +49,8 @@ export function useRequestPolling({
   offset = 0,
   pollIntervalMs = DEFAULT_REQUEST_POLL_INTERVAL_MS
 }: UseRequestPollingOptions = {}): UseRequestPollingResult {
+  const [cancelErrorById, setCancelErrorById] = useState<Record<string, string>>({});
+  const [cancelingById, setCancelingById] = useState<Record<string, boolean>>({});
   const [requests, setRequests] = useState<FeatureRequestRecord[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -54,6 +59,7 @@ export function useRequestPolling({
   const [isPolling, setIsPolling] = useState(false);
 
   const inFlightRef = useRef(false);
+  const cancelingByIdRef = useRef<Record<string, boolean>>({});
 
   const loadSnapshot = useCallback(
     async (mode: RefreshMode) => {
@@ -129,7 +135,53 @@ export function useRequestPolling({
     await loadSnapshot("manual");
   }, [loadSnapshot]);
 
+  const cancelPendingRequest = useCallback(async (requestId: string) => {
+    if (cancelingByIdRef.current[requestId]) {
+      return;
+    }
+    cancelingByIdRef.current[requestId] = true;
+    setCancelingById((current) => ({
+      ...current,
+      [requestId]: true
+    }));
+
+    setCancelErrorById((current) => {
+      if (!current[requestId]) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[requestId];
+      return next;
+    });
+
+    try {
+      const canceledRequest = await cancelRequest(requestId);
+      setRequests((current) =>
+        dedupeRequestsById(
+          current.map((request) => (request.id === requestId ? canceledRequest : request))
+        )
+      );
+      setPendingCount((current) => Math.max(0, current - 1));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to cancel request.";
+      setCancelErrorById((current) => ({
+        ...current,
+        [requestId]: message
+      }));
+    } finally {
+      delete cancelingByIdRef.current[requestId];
+      setCancelingById((current) => {
+        const next = { ...current };
+        delete next[requestId];
+        return next;
+      });
+    }
+  }, []);
+
   return {
+    cancelErrorById,
+    cancelPendingRequest,
+    cancelingById,
     requests,
     pendingCount,
     errorMessage,

@@ -16,6 +16,9 @@ export default function RequestsPage() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const isFocused = useIsFocused();
   const {
+    cancelErrorById,
+    cancelPendingRequest,
+    cancelingById,
     requests,
     pendingCount,
     errorMessage,
@@ -33,6 +36,13 @@ export default function RequestsPage() {
       navigation.navigate("FeatureDetail", { id: featureId });
     },
     [navigation]
+  );
+
+  const handleCancelRequest = useCallback(
+    async (requestId: string) => {
+      await cancelPendingRequest(requestId);
+    },
+    [cancelPendingRequest]
   );
 
   return (
@@ -65,7 +75,15 @@ export default function RequestsPage() {
       {!isInitialLoading && !errorMessage && requests.length === 0 ? (
         <EmptyState message="No feature requests yet. Trigger a capture to get started." />
       ) : null}
-      {requests.length > 0 ? <RequestList onPressFeature={handleOpenFeature} requests={requests} /> : null}
+      {requests.length > 0 ? (
+        <RequestList
+          cancelErrorById={cancelErrorById}
+          cancelingById={cancelingById}
+          onPressCancel={handleCancelRequest}
+          onPressFeature={handleOpenFeature}
+          requests={requests}
+        />
+      ) : null}
     </View>
   );
 }
