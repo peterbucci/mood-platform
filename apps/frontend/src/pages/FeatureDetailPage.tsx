@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useIsFocused } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { StyleSheet, Text, View } from "react-native";
 
@@ -18,7 +17,6 @@ import AppButton from "../components/ui/AppButton";
 import AppCard from "../components/ui/AppCard";
 import InfoText from "../components/ui/InfoText";
 import SectionHeader from "../components/ui/SectionHeader";
-import { useAppRefreshListener } from "../hooks/useAppRefresh";
 import type { RootStackParamList } from "../router/AppRouter";
 import { colors, radius, spacing, typography } from "../theme";
 import type { FeatureRecord } from "../types/features";
@@ -40,7 +38,6 @@ function toTabKey(label: string): string {
 
 export default function FeatureDetailPage({ navigation, route }: FeatureDetailPageProps) {
   const { id, refreshAt } = route.params;
-  const isFocused = useIsFocused();
   const [feature, setFeature] = useState<FeatureRecord | null>(null);
   const [viewState, setViewState] = useState<DetailViewState>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -69,13 +66,6 @@ export default function FeatureDetailPage({ navigation, route }: FeatureDetailPa
   useEffect(() => {
     void loadFeatureDetail();
   }, [loadFeatureDetail, refreshAt]);
-
-  useAppRefreshListener(() => {
-    if (!isFocused) {
-      return;
-    }
-    void loadFeatureDetail();
-  });
 
   const metadata = useMemo(() => (feature ? extractFeatureMetadata(feature) : null), [feature]);
   const sections = useMemo(() => (feature ? buildFeatureSections(feature.data) : []), [feature]);

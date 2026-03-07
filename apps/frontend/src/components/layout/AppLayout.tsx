@@ -18,7 +18,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   return (
     <SafeAreaView style={styles.root}>
       <View style={styles.headerArea}>
-        <Header currentRouteName={currentRouteName}>
+        <Header>
           <Navigation currentRouteName={currentRouteName} />
         </Header>
       </View>

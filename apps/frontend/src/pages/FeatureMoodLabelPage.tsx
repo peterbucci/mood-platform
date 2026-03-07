@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useIsFocused } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { StyleSheet, View } from "react-native";
 
@@ -13,7 +12,6 @@ import LoadingState from "../components/states/LoadingState";
 import AppCard from "../components/ui/AppCard";
 import AppButton from "../components/ui/AppButton";
 import SectionHeader from "../components/ui/SectionHeader";
-import { useAppRefreshListener } from "../hooks/useAppRefresh";
 import type { RootStackParamList } from "../router/AppRouter";
 import { spacing } from "../theme";
 import type { FeatureRecord } from "../types/features";
@@ -26,7 +24,6 @@ type MoodEditorViewState = "loading" | "ready" | "not_found" | "error";
 
 export default function FeatureMoodLabelPage({ navigation, route }: FeatureMoodLabelPageProps) {
   const { id } = route.params;
-  const isFocused = useIsFocused();
   const [viewState, setViewState] = useState<MoodEditorViewState>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [feature, setFeature] = useState<FeatureRecord | null>(null);
@@ -55,13 +52,6 @@ export default function FeatureMoodLabelPage({ navigation, route }: FeatureMoodL
   useEffect(() => {
     void loadFeature();
   }, [loadFeature]);
-
-  useAppRefreshListener(() => {
-    if (!isFocused) {
-      return;
-    }
-    void loadFeature();
-  });
 
   const handleBack = useCallback(() => {
     navigation.goBack();

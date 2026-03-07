@@ -10,7 +10,6 @@ import RequestSummaryCard from "../components/requests/RequestSummaryCard";
 import AppButton from "../components/ui/AppButton";
 import AppCard from "../components/ui/AppCard";
 import InfoText from "../components/ui/InfoText";
-import { useAppRefreshListener } from "../hooks/useAppRefresh";
 import { DEFAULT_REQUEST_POLL_INTERVAL_MS, useRequestPolling } from "../hooks/useRequestPolling";
 import type { RootStackParamList } from "../router/AppRouter";
 import { colors, radius, spacing, typography } from "../theme";
@@ -103,14 +102,6 @@ export default function RequestsPage() {
       }),
     [requestMoodById, requests]
   );
-
-  useAppRefreshListener(() => {
-    if (!isFocused) {
-      return;
-    }
-
-    void refresh();
-  });
 
   const nowMs = Date.now();
   const completedTodayCount = useMemo(

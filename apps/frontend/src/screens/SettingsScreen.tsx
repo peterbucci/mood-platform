@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import type { AppStateStatus } from "react-native";
-import { useFocusEffect, useIsFocused } from "@react-navigation/native";
+import { useFocusEffect } from "@react-navigation/native";
 
 import FitbitConnectionCard from "../components/fitbit/FitbitConnectionCard";
 import ErrorState from "../components/states/ErrorState";
@@ -11,7 +11,6 @@ import AppCard from "../components/ui/AppCard";
 import InfoText from "../components/ui/InfoText";
 import SettingsSectionHeader from "../components/settings/SettingsSectionHeader";
 import { getFitbitStatus, startFitbitOAuth, unlinkFitbit } from "../api/fitbit";
-import { useAppRefreshListener } from "../hooks/useAppRefresh";
 import type { FitbitConnectionStatus } from "../types/fitbit";
 import { colors, radius, spacing, typography } from "../theme";
 
@@ -19,7 +18,6 @@ const DEFAULT_ERROR_MESSAGE = "We could not load your Fitbit connection status."
 const DEFAULT_APP_STATE: AppStateStatus = "active";
 
 export default function SettingsScreen() {
-  const isFocused = useIsFocused();
   const [status, setStatus] = useState<FitbitConnectionStatus | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>(DEFAULT_ERROR_MESSAGE);
   const [busyAction, setBusyAction] = useState<"connect" | "disconnect" | null>(null);
@@ -82,14 +80,6 @@ export default function SettingsScreen() {
       }
     };
   }, [loadStatus]);
-
-  useAppRefreshListener(() => {
-    if (!isFocused) {
-      return;
-    }
-
-    void loadStatus(statusRef.current ? "refresh" : "initial");
-  });
 
   const handleConnect = useCallback(async () => {
     setBusyAction("connect");

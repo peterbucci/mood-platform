@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useIsFocused, useNavigation } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -11,7 +11,6 @@ import LoadingState from "../components/states/LoadingState";
 import AppButton from "../components/ui/AppButton";
 import AppCard from "../components/ui/AppCard";
 import InfoText from "../components/ui/InfoText";
-import { useAppRefreshListener } from "../hooks/useAppRefresh";
 import type { RootStackParamList } from "../router/AppRouter";
 import { colors, radius, spacing, typography } from "../theme";
 import type { FeatureRecord } from "../types/features";
@@ -48,7 +47,6 @@ function getSummaryTone(category: string | null | undefined): SummaryTone {
 
 export default function FeaturesPage() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const isFocused = useIsFocused();
   const [features, setFeatures] = useState<FeatureRecord[]>([]);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -77,14 +75,6 @@ export default function FeaturesPage() {
   useEffect(() => {
     void loadFeatures("initial");
   }, [loadFeatures]);
-
-  useAppRefreshListener(() => {
-    if (!isFocused) {
-      return;
-    }
-
-    void loadFeatures("refresh");
-  });
 
   const handleOpenFeature = useCallback(
     (featureId: string) => {
