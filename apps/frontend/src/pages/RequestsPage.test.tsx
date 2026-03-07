@@ -1,4 +1,4 @@
-import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, waitFor, within } from "@testing-library/react-native";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 
 import { getFeatures } from "../api/features";
@@ -69,6 +69,8 @@ const FEATURE_FOR_FULFILLED = {
 
 describe("RequestsPage", () => {
   beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-03-07T20:00:00Z"));
     jest.resetAllMocks();
     mockedUseIsFocused.mockReturnValue(true);
     mockedUseNavigation.mockReturnValue({
@@ -87,23 +89,34 @@ describe("RequestsPage", () => {
     mockedGetFeatures.mockResolvedValue([]);
   });
 
-  it("renders pending, fulfilled, and canceled request statuses", async () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("renders a cleaner summary and recent request activity", async () => {
     mockedGetRequests.mockResolvedValue([PENDING_REQUEST, FULFILLED_REQUEST, CANCELED_REQUEST]);
     mockedGetPendingRequestCount.mockResolvedValue(1);
     mockedGetFeatures.mockResolvedValue([FEATURE_FOR_FULFILLED]);
 
-    const { getAllByText, getByText, queryAllByText } = render(<RequestsPage />);
+    const { getAllByText, getByText, getByTestId } = render(<RequestsPage />);
 
     await waitFor(() => {
+      expect(getByText("Requests")).toBeTruthy();
+      expect(getByText("Capture a New Snapshot")).toBeTruthy();
+      expect(getByText("Recent captures")).toBeTruthy();
       expect(getByText("Pending")).toBeTruthy();
-      expect(getByText("Fulfilled")).toBeTruthy();
+      expect(getByText("Completed today")).toBeTruthy();
+      expect(getByText("Last capture")).toBeTruthy();
+      expect(getByText("In progress")).toBeTruthy();
+      expect(getByText("Ready")).toBeTruthy();
       expect(getByText("Canceled")).toBeTruthy();
-      expect(getByText("Feature ID: feature-fulfilled-1")).toBeTruthy();
-      expect(getByText("Mood: Calm - Relaxed")).toBeTruthy();
-      expect(getAllByText("Mood: Not labeled").length).toBeGreaterThan(0);
-      expect(getByText("Cancel Request")).toBeTruthy();
-      expect(queryAllByText("Cancel Request")).toHaveLength(1);
+      expect(getByText("1 capture is processing. Updates appear automatically.")).toBeTruthy();
+      expect(getByText("View feature details")).toBeTruthy();
+      expect(getByText("Cancel")).toBeTruthy();
     });
+
+    expect(within(getByTestId(`request-item-${FULFILLED_REQUEST.id}`)).getByText("Relaxed")).toBeTruthy();
+    expect(getAllByText("Mood not labeled").length).toBeGreaterThan(0);
   });
 
   it("shows the selected mood label on newly created pending requests", async () => {
@@ -133,8 +146,8 @@ describe("RequestsPage", () => {
     fireEvent.press(getByTestId("log-emotion-button"));
 
     await waitFor(() => {
-      expect(getAllByText(`Request ID: ${createdRequestId}`).length).toBeGreaterThan(0);
-      expect(getByText("Mood: Calm - Relaxed")).toBeTruthy();
+      expect(getByText(`ID ${createdRequestId}`)).toBeTruthy();
+      expect(getAllByText("Relaxed").length).toBeGreaterThan(0);
     });
   });
 
@@ -166,9 +179,8 @@ describe("RequestsPage", () => {
     const { getByText } = render(<RequestsPage />);
 
     await waitFor(() => {
-      expect(
-        getByText("No feature requests yet. Trigger a capture to get started.")
-      ).toBeTruthy();
+      expect(getByText("No recent captures yet")).toBeTruthy();
+      expect(getByText("Queue is up to date.")).toBeTruthy();
     });
   });
 
@@ -178,7 +190,7 @@ describe("RequestsPage", () => {
     const { getByText } = render(<RequestsPage />);
 
     await waitFor(() => {
-      expect(getByText("Something went wrong")).toBeTruthy();
+      expect(getByText("Unable to load recent captures")).toBeTruthy();
       expect(getByText("Unable to load request list.")).toBeTruthy();
       expect(getByText("Try Again")).toBeTruthy();
     });
@@ -201,7 +213,6 @@ describe("RequestsPage", () => {
   });
 
   it("polls while pending and updates request to fulfilled", async () => {
-    jest.useFakeTimers();
     const navigate = jest.fn();
     mockedUseNavigation.mockReturnValue({ navigate } as never);
 
@@ -211,8 +222,8 @@ describe("RequestsPage", () => {
     const { getByText } = render(<RequestsPage />);
 
     await waitFor(() => {
-      expect(getByText("Pending")).toBeTruthy();
-      expect(getByText("Auto-updating while requests are pending.")).toBeTruthy();
+      expect(getByText("In progress")).toBeTruthy();
+      expect(getByText("1 capture is processing. Updates appear automatically.")).toBeTruthy();
     });
 
     act(() => {
@@ -221,26 +232,22 @@ describe("RequestsPage", () => {
 
     await waitFor(() => {
       expect(mockedGetRequests).toHaveBeenCalledTimes(2);
-      expect(getByText("Fulfilled")).toBeTruthy();
-      expect(getByText("View Feature")).toBeTruthy();
+      expect(getByText("Ready")).toBeTruthy();
+      expect(getByText("View feature details")).toBeTruthy();
     });
 
-    fireEvent.press(getByText("View Feature"));
+    fireEvent.press(getByText("View feature details"));
     expect(navigate).toHaveBeenCalledWith("FeatureDetail", { id: "feature-fulfilled-1" });
-
-    jest.useRealTimers();
   });
 
   it("stops polling once all requests are terminal", async () => {
-    jest.useFakeTimers();
-
     mockedGetRequests.mockResolvedValueOnce([PENDING_REQUEST]).mockResolvedValueOnce([FULFILLED_REQUEST]);
     mockedGetPendingRequestCount.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
 
     const { getByText, queryByText } = render(<RequestsPage />);
 
     await waitFor(() => {
-      expect(getByText("Pending")).toBeTruthy();
+      expect(getByText("In progress")).toBeTruthy();
     });
 
     act(() => {
@@ -248,8 +255,9 @@ describe("RequestsPage", () => {
     });
 
     await waitFor(() => {
-      expect(getByText("Fulfilled")).toBeTruthy();
-      expect(queryByText("Auto-updating while requests are pending.")).toBeNull();
+      expect(getByText("Ready")).toBeTruthy();
+      expect(getByText("Queue is up to date.")).toBeTruthy();
+      expect(queryByText("1 capture is processing. Updates appear automatically.")).toBeNull();
     });
 
     act(() => {
@@ -258,8 +266,6 @@ describe("RequestsPage", () => {
 
     expect(mockedGetRequests).toHaveBeenCalledTimes(2);
     expect(mockedGetPendingRequestCount).toHaveBeenCalledTimes(2);
-
-    jest.useRealTimers();
   });
 
   it("reconciles duplicate request ids without duplicate UI rows", async () => {
@@ -269,8 +275,8 @@ describe("RequestsPage", () => {
     const { getAllByText, getByText } = render(<RequestsPage />);
 
     await waitFor(() => {
-      expect(getByText("Fulfilled")).toBeTruthy();
-      expect(getAllByText(`Request ID: ${PENDING_REQUEST.id}`)).toHaveLength(1);
+      expect(getByText("Ready")).toBeTruthy();
+      expect(getAllByText(`ID ${PENDING_REQUEST.id}`)).toHaveLength(1);
     });
   });
 
@@ -278,16 +284,16 @@ describe("RequestsPage", () => {
     const { getByText, queryByText } = render(<RequestsPage />);
 
     await waitFor(() => {
-      expect(getByText("Pending")).toBeTruthy();
-      expect(getByText("Cancel Request")).toBeTruthy();
+      expect(getByText("In progress")).toBeTruthy();
+      expect(getByText("Cancel")).toBeTruthy();
     });
 
-    fireEvent.press(getByText("Cancel Request"));
+    fireEvent.press(getByText("Cancel"));
 
     await waitFor(() => {
       expect(mockedCancelRequest).toHaveBeenCalledWith(PENDING_REQUEST.id);
       expect(getByText("Canceled")).toBeTruthy();
-      expect(queryByText("Cancel Request")).toBeNull();
+      expect(queryByText("Cancel")).toBeNull();
     });
   });
 
@@ -297,19 +303,21 @@ describe("RequestsPage", () => {
     const { getByText } = render(<RequestsPage />);
 
     await waitFor(() => {
-      expect(getByText("Cancel Request")).toBeTruthy();
+      expect(getByText("Cancel")).toBeTruthy();
     });
 
-    fireEvent.press(getByText("Cancel Request"));
+    fireEvent.press(getByText("Cancel"));
 
     await waitFor(() => {
       expect(getByText("Request cannot be canceled.")).toBeTruthy();
-      expect(getByText("Cancel Request")).toBeTruthy();
+      expect(getByText("Cancel")).toBeTruthy();
     });
   });
 
   it("prevents repeated rapid cancellation taps", async () => {
-    let resolveCancel: ((request: FeatureRequestRecord) => void) | null = null;
+    let resolveCancel:
+      | ((value: FeatureRequestRecord | PromiseLike<FeatureRequestRecord>) => void)
+      | undefined;
     mockedCancelRequest.mockImplementationOnce(
       () =>
         new Promise<FeatureRequestRecord>((resolve) => {
@@ -320,15 +328,16 @@ describe("RequestsPage", () => {
     const { getByText } = render(<RequestsPage />);
 
     await waitFor(() => {
-      expect(getByText("Cancel Request")).toBeTruthy();
+      expect(getByText("Cancel")).toBeTruthy();
     });
 
-    const cancelButton = getByText("Cancel Request");
+    const cancelButton = getByText("Cancel");
     fireEvent.press(cancelButton);
     fireEvent.press(cancelButton);
 
     expect(mockedCancelRequest).toHaveBeenCalledTimes(1);
 
+    expect(resolveCancel).toBeDefined();
     resolveCancel?.({
       ...PENDING_REQUEST,
       status: "canceled"

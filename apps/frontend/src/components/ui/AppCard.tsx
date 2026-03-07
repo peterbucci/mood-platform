@@ -9,6 +9,7 @@ type AppCardTone = "default" | "subtle" | "info" | "success" | "warning" | "dang
 type AppCardProps = {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
+  testID?: string;
   tone?: AppCardTone;
 };
 
@@ -31,8 +32,12 @@ function toneStyle(tone: AppCardTone): ViewStyle {
   return { backgroundColor: colors.surface, borderColor: colors.border };
 }
 
-export default function AppCard({ children, style, tone = "default" }: AppCardProps) {
-  return <View style={[styles.card, toneStyle(tone), style]}>{children}</View>;
+export default function AppCard({ children, style, testID, tone = "default" }: AppCardProps) {
+  return (
+    <View style={[styles.card, toneStyle(tone), style]} testID={testID}>
+      {children}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
