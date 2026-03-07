@@ -93,7 +93,7 @@ def test_delete_feature_returns_404_for_other_user(monkeypatch) -> None:
         db_session._session_factory.cache_clear()
 
 
-def test_delete_feature_cleans_labels_and_unlinks_requests(monkeypatch) -> None:
+def test_delete_feature_deletes_linked_request_and_label(monkeypatch) -> None:
     with _temporary_database() as database_url:
         _run_alembic_upgrade(database_url=database_url)
         _configure_runtime_env(monkeypatch=monkeypatch, database_url=database_url)
@@ -135,22 +135,22 @@ def test_delete_feature_cleans_labels_and_unlinks_requests(monkeypatch) -> None:
                 label_count = cursor.fetchone()[0]
                 cursor.execute(
                     """
-                    SELECT status, "featureId"
+                    SELECT COUNT(*)
                     FROM requests
                     WHERE id = %s
                     """,
                     (request_id,),
                 )
-                request_row = cursor.fetchone()
+                request_count = cursor.fetchone()[0]
 
         assert feature_count == 0
         assert label_count == 0
-        assert request_row == ("fulfilled", None)
+        assert request_count == 0
 
         db_session._session_factory.cache_clear()
 
 
-def test_delete_feature_unlinks_multiple_requests(monkeypatch) -> None:
+def test_delete_feature_deletes_all_requests_linked_to_snapshot(monkeypatch) -> None:
     with _temporary_database() as database_url:
         _run_alembic_upgrade(database_url=database_url)
         _configure_runtime_env(monkeypatch=monkeypatch, database_url=database_url)
@@ -188,17 +188,14 @@ def test_delete_feature_unlinks_multiple_requests(monkeypatch) -> None:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT id, status, "featureId"
+                    SELECT id
                     FROM requests
                     WHERE id IN ('req_multi_1', 'req_multi_2')
                     ORDER BY id ASC
                     """
                 )
                 rows = cursor.fetchall()
-        assert rows == [
-            ("req_multi_1", "fulfilled", None),
-            ("req_multi_2", "fulfilled", None),
-        ]
+        assert rows == []
 
         db_session._session_factory.cache_clear()
 

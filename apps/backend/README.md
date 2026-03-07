@@ -101,22 +101,23 @@ Feature read/delete endpoints:
 - `GET /features`
 - `DELETE /features/{id}`
   - deletes the feature for the current user
-  - deletes associated `labels`
-  - sets `requests.featureId = NULL` for requests referencing that feature
-  - keeps request rows and request status unchanged
+  - deletes every request linked to that feature
+  - deletes linked `labels`
+  - runs as one transaction, so no partial cleanup is committed
 
-Request status/cancel endpoints:
+Request status/delete endpoints:
 
 - `GET /requests/{id}`
   - returns `{ id, status, featureId, createdAt }`
 - `GET /requests/pending/count`
   - returns `{ pendingCount }`
 - `DELETE /requests/{id}`
-  - if request is `pending`: transitions to `canceled` and returns request payload
-  - if request is already `canceled`: returns `200` idempotently
-  - if request is `fulfilled`: returns `409` (cancel not allowed)
+  - deletes the request for the current user
+  - if the request is linked to a feature snapshot, deletes that snapshot too
+  - deletes linked `labels`
+  - if legacy data has multiple requests linked to the same snapshot, deleting either side deletes the full connected unit
   - ownership is enforced; unknown/other-user request returns `404`
-  - `deleteFeatureToo=true` is reserved and currently returns `409` for fulfilled requests
+  - runs as one transaction, so cleanup is fully committed or fully rolled back
 
 ## Fitbit OAuth
 
