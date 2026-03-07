@@ -1,5 +1,7 @@
 import { Pressable, StyleSheet, Text } from "react-native";
 
+import { colors, radius, spacing, typography } from "../../theme";
+
 type CancelRequestButtonProps = {
   disabled?: boolean;
   isLoading?: boolean;
@@ -29,17 +31,18 @@ export default function CancelRequestButton({
 const styles = StyleSheet.create({
   button: {
     alignSelf: "flex-start",
-    backgroundColor: "#b91c1c",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6
+    backgroundColor: colors.dangerText,
+    borderRadius: radius.sm,
+    minHeight: 34,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs
   },
   buttonDisabled: {
     opacity: 0.65
   },
   buttonText: {
-    color: "#ffffff",
-    fontSize: 12,
+    ...typography.helper,
+    color: colors.inverseText,
     fontWeight: "700"
   }
 });

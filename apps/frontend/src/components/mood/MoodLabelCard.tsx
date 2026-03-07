@@ -1,7 +1,9 @@
 import { StyleSheet, Text, View } from "react-native";
 
+import { colors, spacing, typography } from "../../theme";
 import type { MoodLabelValue } from "../../types/mood";
 import { getMoodDisplayModel } from "../../utils/moodFormatting";
+import AppCard from "../ui/AppCard";
 import MoodBadge from "./MoodBadge";
 
 type MoodLabelCardProps = {
@@ -12,7 +14,7 @@ export default function MoodLabelCard({ label }: MoodLabelCardProps) {
   const mood = getMoodDisplayModel(label);
 
   return (
-    <View style={styles.card}>
+    <AppCard>
       <Text style={styles.title}>Mood</Text>
       {mood.state === "labeled" && mood.emotion ? (
         <View style={styles.labeledRow}>
@@ -22,37 +24,26 @@ export default function MoodLabelCard({ label }: MoodLabelCardProps) {
       ) : (
         <Text style={styles.fallbackText}>{mood.text}</Text>
       )}
-    </View>
+    </AppCard>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: "#ffffff",
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 8,
-    padding: 14
-  },
   title: {
-    color: "#111827",
-    fontSize: 16,
-    fontWeight: "700"
+    ...typography.cardTitle,
+    color: colors.textPrimary
   },
   labeledRow: {
     alignItems: "center",
     flexDirection: "row",
-    gap: 8
+    gap: spacing.sm
   },
   labeledText: {
-    color: "#111827",
-    fontSize: 14,
-    fontWeight: "600"
+    ...typography.bodyStrong,
+    color: colors.textPrimary
   },
   fallbackText: {
-    color: "#4b5563",
-    fontSize: 14,
-    fontWeight: "600"
+    ...typography.bodyStrong,
+    color: colors.textSecondary
   }
 });

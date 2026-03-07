@@ -1,4 +1,8 @@
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
+
+import { colors, spacing } from "../../theme";
+import AppCard from "../ui/AppCard";
+import InfoText from "../ui/InfoText";
 
 type LoadingStateProps = {
   message?: string;
@@ -6,27 +10,21 @@ type LoadingStateProps = {
 
 export default function LoadingState({ message = "Loading..." }: LoadingStateProps) {
   return (
-    <View style={styles.container}>
-      <ActivityIndicator size="small" color="#2563eb" />
-      <Text style={styles.message}>{message}</Text>
-    </View>
+    <AppCard>
+      <View style={styles.container}>
+        <ActivityIndicator size="small" color={colors.primary} />
+        <InfoText>{message}</InfoText>
+      </View>
+    </AppCard>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    borderWidth: 1,
     flexDirection: "row",
-    gap: 10,
+    gap: spacing.md,
     justifyContent: "center",
-    padding: 16
-  },
-  message: {
-    color: "#1f2937",
-    fontSize: 14
+    minHeight: 56
   }
 });

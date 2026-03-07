@@ -1,13 +1,17 @@
 import { useCallback, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import { createFeatureRequest } from "../../api/requests";
+import { colors, spacing, typography } from "../../theme";
 import CategorySelector from "../mood/CategorySelector";
 import EmotionSelector from "../mood/EmotionSelector";
 import type { CreateFeatureRequestResponse } from "../../types/requests";
 import type { MoodCategory } from "../../types/mood";
 import { formatMoodCategory } from "../../utils/moodFormatting";
 import { getDefaultEmotionForCategory, isValidEmotionForCategory } from "../../utils/moodTaxonomy";
+import AppButton from "../ui/AppButton";
+import AppCard from "../ui/AppCard";
+import InfoText from "../ui/InfoText";
 
 type CreateRequestCardProps = {
   onCreated?: (request: CreateFeatureRequestResponse) => Promise<void> | void;
@@ -71,12 +75,12 @@ export default function CreateRequestCard({ onCreated }: CreateRequestCardProps)
   }, [onCreated, selectedCategory, selectedEmotion]);
 
   return (
-    <View style={styles.card}>
+    <AppCard tone="info" style={styles.card}>
       <Text style={styles.title}>Log Emotion + Capture Features</Text>
-      <Text style={styles.description}>
+      <InfoText tone="helper">
         Choose how you feel right now, then submit a feature capture request. The request is queued
         immediately.
-      </Text>
+      </InfoText>
       <CategorySelector
         disabled={isSubmitting}
         onSelectCategory={handleSelectCategory}
@@ -93,90 +97,46 @@ export default function CreateRequestCard({ onCreated }: CreateRequestCardProps)
         {selectedCategory ? formatMoodCategory(selectedCategory) : "Not selected"}
       </Text>
       <Text style={styles.selectionText}>Selected Emotion: {selectedEmotion ?? "Not selected"}</Text>
-      <Pressable
-        accessibilityRole="button"
+      <AppButton
         disabled={isSubmitting || !selectedCategory || !selectedEmotion}
+        isLoading={isSubmitting}
+        label="Log Emotion"
         onPress={handleCreate}
-        style={[
-          styles.button,
-          isSubmitting || !selectedCategory || !selectedEmotion ? styles.buttonDisabled : null
-        ]}
         testID="log-emotion-button"
-      >
-        <Text style={styles.buttonText}>{isSubmitting ? "Logging emotion..." : "Log Emotion"}</Text>
-      </Pressable>
+      />
       {latestCreated ? (
-        <View style={styles.successContainer}>
+        <AppCard tone="success">
           <Text style={styles.successTitle}>Emotion logged and request created</Text>
-          <Text style={styles.successText}>Request ID: {latestCreated.requestId}</Text>
-          <Text style={styles.successText}>Status: {latestCreated.status}</Text>
-          <Text style={styles.successText}>
+          <InfoText tone="success">Request ID: {latestCreated.requestId}</InfoText>
+          <InfoText tone="success">Status: {latestCreated.status}</InfoText>
+          <InfoText tone="success">
             Mood: {selectedCategory} / {selectedEmotion}
-          </Text>
-        </View>
+          </InfoText>
+        </AppCard>
       ) : null}
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-    </View>
+    </AppCard>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: "#ffffff",
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 10,
-    padding: 16
+    gap: spacing.sm
   },
   title: {
-    color: "#111827",
-    fontSize: 18,
-    fontWeight: "700"
-  },
-  description: {
-    color: "#4b5563",
-    fontSize: 14
+    ...typography.sectionTitle,
+    color: colors.textPrimary
   },
   selectionText: {
-    color: "#4b5563",
-    fontSize: 12
-  },
-  button: {
-    backgroundColor: "#2563eb",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  buttonDisabled: {
-    opacity: 0.65
-  },
-  buttonText: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "700",
-    textAlign: "center"
-  },
-  successContainer: {
-    backgroundColor: "#ecfdf5",
-    borderColor: "#86efac",
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 4,
-    padding: 10
+    ...typography.helper,
+    color: colors.textSecondary
   },
   successTitle: {
-    color: "#065f46",
-    fontSize: 14,
-    fontWeight: "700"
-  },
-  successText: {
-    color: "#065f46",
-    fontSize: 13
+    ...typography.bodyStrong,
+    color: colors.successText
   },
   errorText: {
-    color: "#991b1b",
-    fontSize: 14,
-    fontWeight: "600"
+    ...typography.bodyStrong,
+    color: colors.dangerText
   }
 });

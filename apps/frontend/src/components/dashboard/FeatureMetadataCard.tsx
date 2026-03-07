@@ -1,5 +1,7 @@
 import { StyleSheet, Text, View } from "react-native";
 
+import { colors, typography } from "../../theme";
+import AppCard from "../ui/AppCard";
 import FeatureValueRow from "./FeatureValueRow";
 
 type FeatureMetadata = {
@@ -17,7 +19,7 @@ type FeatureMetadataCardProps = {
 
 export default function FeatureMetadataCard({ metadata }: FeatureMetadataCardProps) {
   return (
-    <View style={styles.card}>
+    <AppCard tone="subtle">
       <Text style={styles.title}>Snapshot Metadata</Text>
       <View style={styles.rows}>
         <FeatureValueRow label="Created At" value={metadata.createdAt} />
@@ -27,23 +29,14 @@ export default function FeatureMetadataCard({ metadata }: FeatureMetadataCardPro
         <FeatureValueRow label="Window End" value={metadata.windowEnd} />
         <FeatureValueRow label="Source Timezone" value={metadata.sourceTimezone} />
       </View>
-    </View>
+    </AppCard>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: "#f8fafc",
-    borderColor: "#cbd5e1",
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 10,
-    padding: 14
-  },
   title: {
-    color: "#0f172a",
-    fontSize: 16,
-    fontWeight: "700"
+    ...typography.cardTitle,
+    color: colors.textPrimary
   },
   rows: {
     gap: 7

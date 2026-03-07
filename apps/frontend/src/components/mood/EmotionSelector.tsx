@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { colors, radius, spacing, typography } from "../../theme";
 import type { MoodCategory } from "../../types/mood";
 import { getEmotionOptionsForCategory } from "../../utils/moodTaxonomy";
 
@@ -54,43 +55,43 @@ export default function EmotionSelector({
 
 const styles = StyleSheet.create({
   container: {
-    gap: 8
+    gap: spacing.sm
   },
   label: {
-    color: "#374151",
-    fontSize: 14,
-    fontWeight: "700"
+    ...typography.bodyStrong,
+    color: colors.textSecondary
   },
   helpText: {
-    color: "#6b7280",
-    fontSize: 13
+    ...typography.helper,
+    color: colors.textMuted
   },
   options: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8
+    gap: spacing.sm
   },
   option: {
-    backgroundColor: "#f9fafb",
-    borderColor: "#d1d5db",
-    borderRadius: 999,
+    backgroundColor: colors.surfaceMuted,
+    borderColor: colors.neutralBorder,
+    borderRadius: radius.pill,
     borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6
+    minHeight: 34,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs
   },
   optionSelected: {
-    backgroundColor: "#dcfce7",
-    borderColor: "#16a34a"
+    backgroundColor: colors.calmSurface,
+    borderColor: colors.calmBorder
   },
   optionDisabled: {
     opacity: 0.65
   },
   optionText: {
-    color: "#374151",
-    fontSize: 12,
+    ...typography.helper,
+    color: colors.textSecondary,
     fontWeight: "700"
   },
   optionTextSelected: {
-    color: "#166534"
+    color: colors.calmText
   }
 });

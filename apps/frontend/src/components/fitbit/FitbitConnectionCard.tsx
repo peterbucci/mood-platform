@@ -1,6 +1,10 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
+import { colors, spacing, typography } from "../../theme";
 import type { FitbitConnectionStatus } from "../../types/fitbit";
+import AppButton from "../ui/AppButton";
+import AppCard from "../ui/AppCard";
+import InfoText from "../ui/InfoText";
 
 type FitbitConnectionCardProps = {
   status: FitbitConnectionStatus;
@@ -30,29 +34,24 @@ export default function FitbitConnectionCard({
 }: FitbitConnectionCardProps) {
   if (!status.connected) {
     return (
-      <View style={[styles.card, styles.disconnectedCard]}>
+      <AppCard style={styles.card} tone="warning">
         <Text style={styles.title}>Fitbit not connected</Text>
-        <Text style={styles.description}>
+        <InfoText tone="helper">
           Feature requests may not be fulfilled until your Fitbit account is connected.
-        </Text>
-        <Pressable
-          accessibilityRole="button"
-          disabled={isBusy}
+        </InfoText>
+        <AppButton
           onPress={onConnect}
-          style={[styles.primaryButton, isBusy ? styles.buttonDisabled : null]}
-        >
-          <Text style={styles.primaryButtonText}>
-            {isBusy ? "Opening Fitbit..." : "Connect Fitbit"}
-          </Text>
-        </Pressable>
-      </View>
+          isLoading={isBusy}
+          label="Connect Fitbit"
+        />
+      </AppCard>
     );
   }
 
   return (
-    <View style={[styles.card, styles.connectedCard]}>
+    <AppCard style={styles.card} tone="success">
       <Text style={styles.title}>Fitbit connected</Text>
-      <Text style={styles.description}>Your account is ready for feature fulfillment.</Text>
+      <InfoText tone="helper">Your account is ready for feature fulfillment.</InfoText>
       <View style={styles.metaContainer}>
         <Text style={styles.metaRow}>Status: Connected</Text>
         <Text style={styles.metaRow}>Fitbit user id: {status.fitbitUserId ?? "N/A"}</Text>
@@ -63,114 +62,38 @@ export default function FitbitConnectionCard({
         </Text>
       </View>
       <View style={styles.actionRow}>
-        <Pressable
-          accessibilityRole="button"
-          disabled={isBusy}
-          onPress={onRefresh}
-          style={[styles.secondaryButton, isBusy ? styles.buttonDisabled : null]}
-        >
-          <Text style={styles.secondaryButtonText}>Refresh Status</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          disabled={isBusy}
-          onPress={onConnect}
-          style={[styles.secondaryButton, isBusy ? styles.buttonDisabled : null]}
-        >
-          <Text style={styles.secondaryButtonText}>Reconnect Fitbit</Text>
-        </Pressable>
+        <AppButton label="Refresh Status" onPress={onRefresh} disabled={isBusy} variant="neutral" />
+        <AppButton label="Reconnect Fitbit" onPress={onConnect} disabled={isBusy} variant="neutral" />
         {onDisconnect ? (
-          <Pressable
-            accessibilityRole="button"
-            disabled={isBusy}
-            onPress={onDisconnect}
-            style={[styles.dangerButton, isBusy ? styles.buttonDisabled : null]}
-          >
-            <Text style={styles.dangerButtonText}>Disconnect Fitbit</Text>
-          </Pressable>
+          <AppButton label="Disconnect Fitbit" onPress={onDisconnect} disabled={isBusy} variant="danger" />
         ) : null}
       </View>
-    </View>
+    </AppCard>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 12,
-    padding: 16
-  },
-  disconnectedCard: {
-    backgroundColor: "#fff7ed",
-    borderColor: "#fed7aa"
-  },
-  connectedCard: {
-    backgroundColor: "#ecfdf5",
-    borderColor: "#86efac"
+    gap: spacing.md
   },
   title: {
-    color: "#111827",
-    fontSize: 20,
-    fontWeight: "700"
-  },
-  description: {
-    color: "#374151",
-    fontSize: 15
+    ...typography.sectionTitle,
+    color: colors.textPrimary
   },
   metaContainer: {
-    backgroundColor: "#ffffff",
-    borderColor: "#d1fae5",
+    backgroundColor: colors.surface,
+    borderColor: colors.successBorder,
     borderRadius: 8,
     borderWidth: 1,
-    gap: 4,
-    padding: 10
+    gap: spacing.xxs,
+    padding: spacing.md
   },
   metaRow: {
-    color: "#1f2937",
-    fontSize: 13
+    ...typography.helper,
+    color: colors.textSecondary
   },
   actionRow: {
     flexDirection: "column",
-    gap: 8
-  },
-  primaryButton: {
-    backgroundColor: "#2563eb",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  primaryButtonText: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "700",
-    textAlign: "center"
-  },
-  secondaryButton: {
-    backgroundColor: "#111827",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  secondaryButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600",
-    textAlign: "center"
-  },
-  dangerButton: {
-    backgroundColor: "#b91c1c",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  dangerButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600",
-    textAlign: "center"
-  },
-  buttonDisabled: {
-    opacity: 0.65
+    gap: spacing.sm
   }
 });

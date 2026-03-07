@@ -1,4 +1,8 @@
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text } from "react-native";
+
+import { colors, typography } from "../../theme";
+import AppCard from "../ui/AppCard";
+import InfoText from "../ui/InfoText";
 
 type PendingCountCardProps = {
   pendingCount: number;
@@ -6,31 +10,19 @@ type PendingCountCardProps = {
 
 export default function PendingCountCard({ pendingCount }: PendingCountCardProps) {
   return (
-    <View style={styles.card}>
-      <Text style={styles.label}>Pending Requests</Text>
+    <AppCard tone="info">
+      <InfoText tone="helper">Pending Requests</InfoText>
       <Text style={styles.value} testID="pending-count-value">
         {pendingCount}
       </Text>
-    </View>
+    </AppCard>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: "#eff6ff",
-    borderColor: "#bfdbfe",
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 6,
-    padding: 14
-  },
-  label: {
-    color: "#1e3a8a",
-    fontSize: 13,
-    fontWeight: "600"
-  },
   value: {
-    color: "#1d4ed8",
+    ...typography.title,
+    color: colors.primaryStrong,
     fontSize: 28,
     fontWeight: "800"
   }

@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text } from "react-native";
 
+import { colors, radius, spacing, typography } from "../../theme";
 import type { FeatureRecord } from "../../types/features";
 
 type FeatureRowProps = {
@@ -47,20 +48,20 @@ export default function FeatureRow({ feature, onPress }: FeatureRowProps) {
 
 const styles = StyleSheet.create({
   row: {
-    backgroundColor: "#ffffff",
-    borderColor: "#e5e7eb",
-    borderRadius: 10,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.md,
     borderWidth: 1,
-    gap: 4,
-    padding: 12
+    gap: spacing.xxs,
+    minHeight: 84,
+    padding: spacing.md
   },
   captureTime: {
-    color: "#111827",
-    fontSize: 14,
-    fontWeight: "700"
+    ...typography.bodyStrong,
+    color: colors.textPrimary
   },
   meta: {
-    color: "#4b5563",
-    fontSize: 12
+    ...typography.helper,
+    color: colors.textSecondary
   }
 });

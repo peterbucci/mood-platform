@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { colors, radius, spacing, typography } from "../../theme";
 import type { FeatureRequestRecord } from "../../types/requests";
 import CancelRequestButton from "./CancelRequestButton";
 import StatusBadge from "./StatusBadge";
@@ -64,40 +65,40 @@ export default function RequestRow({
 
 const styles = StyleSheet.create({
   row: {
-    backgroundColor: "#ffffff",
-    borderColor: "#e5e7eb",
-    borderRadius: 10,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.md,
     borderWidth: 1,
-    gap: 4,
-    padding: 12
+    gap: spacing.xxs,
+    padding: spacing.md
   },
   requestId: {
-    color: "#111827",
-    fontSize: 14,
-    fontWeight: "700"
+    ...typography.bodyStrong,
+    color: colors.textPrimary
   },
   meta: {
-    color: "#4b5563",
-    fontSize: 12
+    ...typography.helper,
+    color: colors.textSecondary
   },
   featureContainer: {
-    gap: 6
+    gap: spacing.xs
   },
   featureButton: {
     alignSelf: "flex-start",
-    backgroundColor: "#2563eb",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    minHeight: 34,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs
   },
   featureButtonText: {
-    color: "#ffffff",
-    fontSize: 12,
+    ...typography.helper,
+    color: colors.inverseText,
     fontWeight: "700"
   },
   cancelError: {
-    color: "#b91c1c",
-    fontSize: 12,
+    ...typography.helper,
+    color: colors.dangerText,
     fontWeight: "600"
   }
 });

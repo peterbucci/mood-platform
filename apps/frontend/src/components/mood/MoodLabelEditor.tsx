@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
+import { colors, spacing, typography } from "../../theme";
 import type { MoodCategory, MoodLabelValue } from "../../types/mood";
 import { formatMoodCategory } from "../../utils/moodFormatting";
 import {
@@ -8,6 +9,8 @@ import {
   isMoodCategory,
   isValidEmotionForCategory
 } from "../../utils/moodTaxonomy";
+import AppButton from "../ui/AppButton";
+import AppCard from "../ui/AppCard";
 import CategorySelector from "./CategorySelector";
 import EmotionSelector from "./EmotionSelector";
 
@@ -124,7 +127,7 @@ export default function MoodLabelEditor({ initialLabel, onSaveLabel }: MoodLabel
   }, [onSaveLabel, selectedCategory, selectedEmotion]);
 
   return (
-    <View style={styles.card}>
+    <AppCard style={styles.card}>
       <Text style={styles.title}>{isInitiallyLabeled ? "Update Mood Label" : "Add Mood Label"}</Text>
       <CategorySelector
         disabled={isSaving}
@@ -144,63 +147,42 @@ export default function MoodLabelEditor({ initialLabel, onSaveLabel }: MoodLabel
         Selected Emotion: {selectedEmotion ?? "Not selected"}
       </Text>
 
-      <Pressable
-        accessibilityRole="button"
+      <AppButton
         disabled={isSaving || !selectedCategory || !selectedEmotion}
+        isLoading={isSaving}
+        label="Save Label"
         onPress={handleSave}
-        style={[styles.saveButton, isSaving || !selectedCategory || !selectedEmotion ? styles.saveButtonDisabled : null]}
+        style={styles.saveButton}
         testID="mood-save-button"
-      >
-        <Text style={styles.saveButtonText}>{isSaving ? "Saving..." : "Save Label"}</Text>
-      </Pressable>
+      />
 
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
       {successMessage ? <Text style={styles.successText}>{successMessage}</Text> : null}
-    </View>
+    </AppCard>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: "#ffffff",
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 10,
-    padding: 14
+    gap: spacing.sm
   },
   title: {
-    color: "#111827",
-    fontSize: 16,
-    fontWeight: "700"
+    ...typography.cardTitle,
+    color: colors.textPrimary
   },
   selectionText: {
-    color: "#4b5563",
-    fontSize: 12
+    ...typography.helper,
+    color: colors.textSecondary
   },
   saveButton: {
-    alignSelf: "flex-start",
-    backgroundColor: "#111827",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  saveButtonDisabled: {
-    opacity: 0.6
-  },
-  saveButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600"
+    alignSelf: "flex-start"
   },
   errorText: {
-    color: "#b91c1c",
-    fontSize: 13,
-    fontWeight: "600"
+    ...typography.bodyStrong,
+    color: colors.dangerText
   },
   successText: {
-    color: "#166534",
-    fontSize: 13,
-    fontWeight: "600"
+    ...typography.bodyStrong,
+    color: colors.successText
   }
 });

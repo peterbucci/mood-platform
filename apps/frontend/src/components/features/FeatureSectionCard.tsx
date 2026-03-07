@@ -1,6 +1,8 @@
 import { StyleSheet, Text, View } from "react-native";
 
+import { colors, typography } from "../../theme";
 import type { FeatureSectionRow } from "../../utils/featureFormatting";
+import AppCard from "../ui/AppCard";
 import FeatureValueRow from "./FeatureValueRow";
 
 type FeatureSectionCardProps = {
@@ -10,30 +12,21 @@ type FeatureSectionCardProps = {
 
 export default function FeatureSectionCard({ title, rows }: FeatureSectionCardProps) {
   return (
-    <View style={styles.card}>
+    <AppCard>
       <Text style={styles.title}>{title}</Text>
       <View style={styles.rows}>
         {rows.map((row) => (
           <FeatureValueRow key={`${title}-${row.label}`} label={row.label} value={row.value} />
         ))}
       </View>
-    </View>
+    </AppCard>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: "#ffffff",
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 10,
-    padding: 14
-  },
   title: {
-    color: "#111827",
-    fontSize: 16,
-    fontWeight: "700"
+    ...typography.cardTitle,
+    color: colors.textPrimary
   },
   rows: {
     gap: 7
