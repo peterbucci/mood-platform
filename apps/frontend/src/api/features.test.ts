@@ -48,6 +48,7 @@ describe("features api module", () => {
                 createdAt: 1_772_800_000,
                 data: { steps: 1000 },
                 id: "f-1",
+                label: { category: "energized", emotion: "Happy" },
                 source: "fitbit-pipeline",
                 userId: "00000000-0000-0000-0000-000000000001"
               }
@@ -64,6 +65,7 @@ describe("features api module", () => {
             createdAt: 1_772_800_000,
             data: { steps: 1000 },
             id: "f-1",
+            label: { category: "energized", emotionWord: "Happy" },
             source: "fitbit-pipeline",
             userId: "00000000-0000-0000-0000-000000000001"
           },
@@ -76,6 +78,8 @@ describe("features api module", () => {
 
     expect(list).toHaveLength(1);
     expect(byId.id).toBe("f-1");
+    expect(list[0]?.label).toEqual({ category: "energized", emotion: "Happy" });
+    expect(byId.label).toEqual({ category: "energized", emotion: "Happy" });
     expect((global.fetch as jest.Mock).mock.calls[0][0]).toBe(
       "http://api.example.test/features?limit=20&offset=0"
     );

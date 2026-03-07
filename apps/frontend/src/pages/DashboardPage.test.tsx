@@ -47,6 +47,10 @@ const LATEST_FEATURE: FeatureRecord = {
     }
   },
   id: "feature-1",
+  label: {
+    category: "energized",
+    emotion: "Happy"
+  },
   source: "fitbit-pipeline",
   userId: "00000000-0000-0000-0000-000000000001"
 };
@@ -74,6 +78,9 @@ describe("DashboardPage", () => {
       expect(getByText("Snapshot Metadata")).toBeTruthy();
       expect(getByText("America/New_York")).toBeTruthy();
       expect(getByText("v2.1.0")).toBeTruthy();
+      expect(getByText("Mood")).toBeTruthy();
+      expect(getByText("Energized")).toBeTruthy();
+      expect(getByText("— Happy")).toBeTruthy();
     });
   });
 
