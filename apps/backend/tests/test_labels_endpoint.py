@@ -183,10 +183,11 @@ def test_labels_cascade_when_feature_deleted(monkeypatch) -> None:
         )
         _create_label_via_api(feature_id=feature_id)
 
-        with psycopg.connect(database_url) as connection:
-            with connection.cursor() as cursor:
-                cursor.execute("DELETE FROM features WHERE id = %s", (feature_id,))
-            connection.commit()
+        with TestClient(app) as client:
+            response = client.delete(f"/features/{feature_id}")
+
+        assert response.status_code == 200
+        assert response.json() == {"id": feature_id}
 
         with psycopg.connect(database_url) as connection:
             with connection.cursor() as cursor:
@@ -222,16 +223,20 @@ def test_labels_cascade_when_request_deleted(monkeypatch) -> None:
         )
         _create_label_via_api(feature_id=feature_id)
 
-        with psycopg.connect(database_url) as connection:
-            with connection.cursor() as cursor:
-                cursor.execute("DELETE FROM requests WHERE id = %s", (request_id,))
-            connection.commit()
+        with TestClient(app) as client:
+            response = client.delete(f"/requests/{request_id}")
+
+        assert response.status_code == 200
+        assert response.json() == {"id": request_id}
 
         with psycopg.connect(database_url) as connection:
             with connection.cursor() as cursor:
                 cursor.execute('SELECT COUNT(*) FROM labels WHERE "featureId" = %s', (feature_id,))
                 count = cursor.fetchone()[0]
+                cursor.execute("SELECT COUNT(*) FROM features WHERE id = %s", (feature_id,))
+                feature_count = cursor.fetchone()[0]
         assert count == 0
+        assert feature_count == 0
 
         db_session._session_factory.cache_clear()
 
