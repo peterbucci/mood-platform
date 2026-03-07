@@ -16,15 +16,21 @@ jest.mock("@react-navigation/native", () => ({
 const mockedGetFeatureById = jest.mocked(getFeatureById);
 const mockedUseIsFocused = jest.mocked(useIsFocused);
 
+function toSeconds(value: string): number {
+  return Math.floor(new Date(value).getTime() / 1000);
+}
+
 const DETAIL_FEATURE: FeatureRecord = {
-  createdAt: 1_772_800_000,
+  createdAt: toSeconds("2026-03-07T18:05:00Z"),
   data: {
     activity: {
+      active_zone_minutes: 69,
+      calories_out_kcal: 906,
       steps_count: 4567
     },
     derived: {
-      day_of_week: 2,
-      weekday_flag: true
+      day_of_week: 6,
+      weekday_flag: false
     },
     heart_rate: {
       resting_hr: 62
@@ -33,7 +39,8 @@ const DETAIL_FEATURE: FeatureRecord = {
       hrv_mean: 35.2
     },
     sleep: {
-      sleep_efficiency: 91
+      sleep_efficiency: 91,
+      total_sleep_minutes: 423
     }
   },
   extractorVersion: "v3.2.1",
@@ -77,10 +84,16 @@ function makeProps(id: string) {
 describe("FeatureDetailPage", () => {
   beforeEach(() => {
     jest.resetAllMocks();
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-03-07T20:05:00Z"));
     mockedUseIsFocused.mockReturnValue(true);
   });
 
-  it("loads a feature by id and renders grouped detail with dropdown section navigation", async () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("loads a feature by id and renders summary-first detail with section tabs", async () => {
     mockedGetFeatureById.mockResolvedValue(DETAIL_FEATURE);
 
     const props = makeProps("feature-detail-1");
@@ -88,26 +101,33 @@ describe("FeatureDetailPage", () => {
 
     await waitFor(() => {
       expect(mockedGetFeatureById).toHaveBeenCalledWith("feature-detail-1");
-      expect(getAllByText("Activity").length).toBeGreaterThan(0);
-      expect(getByText("Mood")).toBeTruthy();
+      expect(getByText("Snapshot Summary")).toBeTruthy();
+      expect(getByText("Key Metrics")).toBeTruthy();
+      expect(getByText("Detailed Sections")).toBeTruthy();
+      expect(getByText("Metadata")).toBeTruthy();
       expect(getAllByText("Calm").length).toBeGreaterThan(0);
-      expect(getByText("- Relaxed")).toBeTruthy();
-      expect(getByText("Update Mood Label")).toBeTruthy();
+      expect(getByText("Relaxed")).toBeTruthy();
+      expect(getByText("Captured after a recent Fitbit sync.")).toBeTruthy();
+      expect(getByText("7h 03m")).toBeTruthy();
+      expect(getAllByText("4,567").length).toBeGreaterThan(0);
+      expect(getAllByText("62 bpm").length).toBeGreaterThan(0);
+      expect(getAllByText("906 kcal").length).toBeGreaterThan(0);
+      expect(getAllByText("Fitbit").length).toBeGreaterThan(0);
     });
 
-    expect(getByText("Steps Count")).toBeTruthy();
-    expect(queryByText("Sleep Efficiency")).toBeNull();
+    expect(getAllByText("Activity").length).toBeGreaterThan(0);
+    expect(getAllByText("Steps").length).toBeGreaterThan(0);
+    expect(getByText("Movement, activity, and exertion signals from this snapshot.")).toBeTruthy();
+    expect(queryByText("Sleep-related signals that help explain the snapshot context.")).toBeNull();
 
-    fireEvent.press(getByTestId("feature-detail-section-dropdown-toggle"));
-    fireEvent.press(getByTestId("feature-detail-section-option-sleep"));
-    expect(getAllByText("Sleep").length).toBeGreaterThan(0);
-    expect(getByText("Sleep Efficiency")).toBeTruthy();
+    fireEvent.press(getByTestId("feature-detail-section-tab-sleep"));
 
-    fireEvent.press(getByTestId("feature-detail-section-dropdown-toggle"));
-    fireEvent.press(getByTestId("feature-detail-section-option-metadata"));
-    expect(getByText("Feature Metadata")).toBeTruthy();
-    expect(getByText("fitbit-pipeline")).toBeTruthy();
-    expect(getByText("America/New_York")).toBeTruthy();
+    await waitFor(() => {
+      expect(getAllByText("Sleep").length).toBeGreaterThan(0);
+      expect(getByText("Sleep-related signals that help explain the snapshot context.")).toBeTruthy();
+      expect(getAllByText("Sleep Efficiency").length).toBeGreaterThan(0);
+      expect(getAllByText("91%").length).toBeGreaterThan(0);
+    });
   });
 
   it("shows Add Mood Label CTA when feature has no label", async () => {
@@ -117,22 +137,22 @@ describe("FeatureDetailPage", () => {
     const { getByText } = render(<FeatureDetailPage {...props} />);
 
     await waitFor(() => {
-      expect(getByText("Mood")).toBeTruthy();
+      expect(getByText("Snapshot Summary")).toBeTruthy();
       expect(getByText("Not labeled")).toBeTruthy();
       expect(getByText("Add Mood Label")).toBeTruthy();
     });
   });
 
-  it("navigates to mood editor screen from the bottom CTA", async () => {
+  it("navigates to mood editor screen from the summary card action", async () => {
     mockedGetFeatureById.mockResolvedValue(DETAIL_FEATURE);
     const props = makeProps("feature-detail-1");
-    const { getByText } = render(<FeatureDetailPage {...props} />);
+    const { getByTestId } = render(<FeatureDetailPage {...props} />);
 
     await waitFor(() => {
-      expect(getByText("Update Mood Label")).toBeTruthy();
+      expect(getByTestId("feature-detail-mood-action")).toBeTruthy();
     });
 
-    fireEvent.press(getByText("Update Mood Label"));
+    fireEvent.press(getByTestId("feature-detail-mood-action"));
 
     expect((props.navigation as never as { navigate: jest.Mock }).navigate).toHaveBeenCalledWith(
       "FeatureMoodLabel",
@@ -140,22 +160,23 @@ describe("FeatureDetailPage", () => {
     );
   });
 
-  it("renders raw JSON directly when raw section is selected", async () => {
+  it("keeps raw JSON collapsed until the debug toggle is opened", async () => {
     mockedGetFeatureById.mockResolvedValue(DETAIL_FEATURE);
     const props = makeProps("feature-detail-1");
     const { getByTestId, getByText, queryByText } = render(<FeatureDetailPage {...props} />);
 
     await waitFor(() => {
-      expect(getByTestId("feature-detail-section-dropdown-toggle")).toBeTruthy();
+      expect(getByText("Debug Data")).toBeTruthy();
+      expect(getByTestId("feature-detail-raw-json-toggle")).toBeTruthy();
     });
 
-    fireEvent.press(getByTestId("feature-detail-section-dropdown-toggle"));
-    fireEvent.press(getByTestId("feature-detail-section-option-raw-json"));
+    expect(queryByText(/"id": "feature-detail-1"/)).toBeNull();
+
+    fireEvent.press(getByTestId("feature-detail-raw-json-toggle"));
 
     await waitFor(() => {
       expect(getByText(/"id": "feature-detail-1"/)).toBeTruthy();
     });
-    expect(queryByText("Show Raw JSON")).toBeNull();
   });
 
   it("renders a not found state when feature id does not resolve", async () => {

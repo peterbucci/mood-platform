@@ -1,34 +1,38 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useIsFocused } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import { getFeatureById } from "../api/features";
 import { isApiError } from "../api/errors";
+import FeatureKeyMetricsCard from "../components/features/FeatureKeyMetricsCard";
 import FeatureMetadataCard from "../components/features/FeatureMetadataCard";
 import FeatureSectionCard from "../components/features/FeatureSectionCard";
+import FeatureSectionTabs from "../components/features/FeatureSectionTabs";
+import FeatureSnapshotSummaryCard from "../components/features/FeatureSnapshotSummaryCard";
 import RawJsonToggle from "../components/features/RawJsonToggle";
-import MoodLabelCard from "../components/mood/MoodLabelCard";
 import EmptyState from "../components/states/EmptyState";
 import ErrorState from "../components/states/ErrorState";
 import LoadingState from "../components/states/LoadingState";
-import AppCard from "../components/ui/AppCard";
 import AppButton from "../components/ui/AppButton";
+import AppCard from "../components/ui/AppCard";
+import InfoText from "../components/ui/InfoText";
 import SectionHeader from "../components/ui/SectionHeader";
 import { useAppRefreshListener } from "../hooks/useAppRefresh";
 import type { RootStackParamList } from "../router/AppRouter";
 import { colors, radius, spacing, typography } from "../theme";
 import type { FeatureRecord } from "../types/features";
-import { buildFeatureSections, extractFeatureMetadata } from "../utils/featureFormatting";
+import { formatFeatureRelativeTime } from "../utils/featureHistoryFormatting";
+import {
+  buildFeatureSections,
+  buildFeatureSnapshotContextLine,
+  extractFeatureKeyMetrics,
+  extractFeatureMetadata,
+  getFeatureSectionDescription
+} from "../utils/featureFormatting";
 
 type FeatureDetailPageProps = NativeStackScreenProps<RootStackParamList, "FeatureDetail">;
 type DetailViewState = "loading" | "ready" | "not_found" | "error";
-type DetailTab = {
-  key: string;
-  label: string;
-  type: "section" | "metadata" | "raw";
-  sectionTitle?: string;
-};
 
 function toTabKey(label: string): string {
   return label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
@@ -40,8 +44,7 @@ export default function FeatureDetailPage({ navigation, route }: FeatureDetailPa
   const [feature, setFeature] = useState<FeatureRecord | null>(null);
   const [viewState, setViewState] = useState<DetailViewState>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [activeTabKey, setActiveTabKey] = useState<string | null>(null);
-  const [isSectionDropdownOpen, setIsSectionDropdownOpen] = useState(false);
+  const [activeSectionKey, setActiveSectionKey] = useState<string | null>(null);
 
   const loadFeatureDetail = useCallback(async () => {
     setViewState("loading");
@@ -76,53 +79,40 @@ export default function FeatureDetailPage({ navigation, route }: FeatureDetailPa
 
   const metadata = useMemo(() => (feature ? extractFeatureMetadata(feature) : null), [feature]);
   const sections = useMemo(() => (feature ? buildFeatureSections(feature.data) : []), [feature]);
-  const tabs = useMemo<DetailTab[]>(() => {
-    const sectionTabs = sections.map((section) => ({
-      key: toTabKey(section.title),
-      label: section.title,
-      type: "section" as const,
-      sectionTitle: section.title
-    }));
-
-    return [
-      ...sectionTabs,
-      { key: "metadata", label: "Metadata", type: "metadata" as const },
-      { key: "raw-json", label: "Raw JSON", type: "raw" as const }
-    ];
-  }, [sections]);
-  const activeTab = useMemo(() => tabs.find((tab) => tab.key === activeTabKey) ?? tabs[0] ?? null, [tabs, activeTabKey]);
+  const keyMetrics = useMemo(() => (feature ? extractFeatureKeyMetrics(feature.data) : []), [feature]);
+  const tabs = useMemo(
+    () =>
+      sections.map((section) => ({
+        key: toTabKey(section.title),
+        label: section.title
+      })),
+    [sections]
+  );
+  const activeSection = useMemo(
+    () => sections.find((section) => toTabKey(section.title) === activeSectionKey) ?? sections[0] ?? null,
+    [activeSectionKey, sections]
+  );
 
   useEffect(() => {
     if (viewState !== "ready") {
       return;
     }
 
-    if (!tabs.length) {
-      setActiveTabKey(null);
+    const preferredKey = tabs[0]?.key ?? null;
+    if (!preferredKey) {
+      setActiveSectionKey(null);
       return;
     }
 
-    const preferredTabKey = tabs.find((tab) => tab.type === "section")?.key ?? tabs[0].key;
-    const hasActiveTab = activeTabKey ? tabs.some((tab) => tab.key === activeTabKey) : false;
-
-    if (!activeTabKey || !hasActiveTab) {
-      setActiveTabKey(preferredTabKey);
+    const hasActiveSection = activeSectionKey ? tabs.some((tab) => tab.key === activeSectionKey) : false;
+    if (!activeSectionKey || !hasActiveSection) {
+      setActiveSectionKey(preferredKey);
     }
-  }, [activeTabKey, tabs, viewState]);
+  }, [activeSectionKey, tabs, viewState]);
 
   useEffect(() => {
-    setActiveTabKey(null);
-    setIsSectionDropdownOpen(false);
+    setActiveSectionKey(null);
   }, [id]);
-
-  const handleToggleSectionDropdown = useCallback(() => {
-    setIsSectionDropdownOpen((current) => !current);
-  }, []);
-
-  const handleSelectTab = useCallback((tabKey: string) => {
-    setActiveTabKey(tabKey);
-    setIsSectionDropdownOpen(false);
-  }, []);
 
   const handleOpenMoodEditor = useCallback(() => {
     navigation.navigate("FeatureMoodLabel", { id });
@@ -155,120 +145,136 @@ export default function FeatureDetailPage({ navigation, route }: FeatureDetailPa
     return null;
   }
 
+  const relativeTime = formatFeatureRelativeTime(feature.createdAt);
+
   return (
     <View style={styles.container}>
-      <SectionHeader
-        title="Feature Detail"
-        subtitle={`Readable breakdown for feature snapshot ${id}.`}
-      />
-      <MoodLabelCard label={feature.label} />
-
-      <AppCard tone="subtle">
-        <Text style={styles.tabHeader}>Feature Sections</Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={handleToggleSectionDropdown}
-          style={styles.dropdownToggle}
-          testID="feature-detail-section-dropdown-toggle"
-        >
-          <Text style={styles.dropdownToggleText}>
-            {activeTab ? activeTab.label : "Select a section"}
+      <View style={styles.pageHeader}>
+        <View style={styles.pageHeaderCopy}>
+          <Text style={styles.pageTitle}>Feature Detail</Text>
+          <Text style={styles.pageSubtitle}>
+            Summary first, then a readable breakdown of the signals captured in this snapshot.
           </Text>
-          <Text style={styles.dropdownToggleChevron}>{isSectionDropdownOpen ? "^" : "v"}</Text>
-        </Pressable>
-        {isSectionDropdownOpen ? (
-          <View style={styles.dropdownMenu} testID="feature-detail-section-dropdown-menu">
-            {tabs.map((tab) => {
-              const isActive = activeTab?.key === tab.key;
-              return (
-                <Pressable
-                  accessibilityRole="button"
-                  key={tab.key}
-                  onPress={() => handleSelectTab(tab.key)}
-                  style={[styles.dropdownOption, isActive ? styles.dropdownOptionActive : null]}
-                  testID={`feature-detail-section-option-${tab.key}`}
-                >
-                  <Text style={[styles.dropdownOptionText, isActive ? styles.dropdownOptionTextActive : null]}>
-                    {tab.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : null}
-      </AppCard>
+        </View>
+        <Text style={styles.headerTime}>{relativeTime}</Text>
+      </View>
 
-      {activeTab?.type === "metadata" ? <FeatureMetadataCard metadata={metadata} /> : null}
-      {activeTab?.type === "raw" ? <RawJsonToggle payload={feature} showToggle={false} /> : null}
-      {activeTab?.type === "section" && activeTab.sectionTitle ? (
-        <FeatureSectionCard
-          rows={sections.find((section) => section.title === activeTab.sectionTitle)?.rows ?? []}
-          title={activeTab.label}
-        />
-      ) : null}
+      <View style={styles.headerMetaRow}>
+        <View style={styles.headerMetaItem}>
+          <Text style={styles.headerMetaLabel}>Feature ID</Text>
+          <Text style={styles.headerMetaValue}>{feature.id}</Text>
+        </View>
+      </View>
 
-      <AppButton
-        label={feature.label ? "Update Mood Label" : "Add Mood Label"}
-        onPress={handleOpenMoodEditor}
-        style={styles.inlineButton}
-        variant="neutral"
+      <FeatureSnapshotSummaryCard
+        capturedAt={metadata.createdAt}
+        capturedRelative={relativeTime}
+        contextLine={buildFeatureSnapshotContextLine(feature.source)}
+        label={feature.label}
+        moodActionLabel={feature.label ? "Update Mood Label" : "Add Mood Label"}
+        onPressMoodAction={handleOpenMoodEditor}
+        sourceLabel={metadata.source}
       />
+
+      <FeatureKeyMetricsCard metrics={keyMetrics} />
+
+      {sections.length > 0 ? (
+        <>
+          <AppCard style={styles.sectionPickerCard} tone="subtle">
+            <View style={styles.sectionPickerHeader}>
+              <Text style={styles.sectionPickerTitle}>Detailed Sections</Text>
+              <InfoText tone="helper">Choose a section to explore more values.</InfoText>
+            </View>
+            <FeatureSectionTabs activeKey={activeSectionKey} onSelectTab={setActiveSectionKey} tabs={tabs} />
+          </AppCard>
+
+          {activeSection ? (
+            <FeatureSectionCard
+              rows={activeSection.rows}
+              subtitle={getFeatureSectionDescription(activeSection.title)}
+              title={activeSection.title}
+            />
+          ) : null}
+        </>
+      ) : (
+        <AppCard tone="subtle">
+          <Text style={styles.emptySectionTitle}>Detailed sections are not available for this snapshot yet.</Text>
+        </AppCard>
+      )}
+
+      <FeatureMetadataCard metadata={metadata} />
+      <RawJsonToggle payload={feature} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    gap: spacing.sm
+    gap: spacing.lg
+  },
+  emptySectionTitle: {
+    ...typography.bodyStrong,
+    color: colors.textSecondary
+  },
+  headerMetaItem: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    flex: 1,
+    gap: spacing.xxs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  headerMetaLabel: {
+    ...typography.helper,
+    color: colors.textMuted,
+    fontWeight: "700"
+  },
+  headerMetaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.md,
+    width: "100%"
+  },
+  headerMetaValue: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary
+  },
+  headerTime: {
+    ...typography.helper,
+    color: colors.textMuted,
+    textAlign: "right"
   },
   inlineButton: {
     alignSelf: "flex-start"
   },
-  tabHeader: {
-    ...typography.bodyStrong,
+  pageHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing.md,
+    justifyContent: "space-between"
+  },
+  pageHeaderCopy: {
+    flex: 1,
+    gap: spacing.xxs
+  },
+  pageSubtitle: {
+    ...typography.body,
     color: colors.textSecondary
   },
-  dropdownToggle: {
-    alignItems: "center",
-    backgroundColor: colors.surface,
-    borderColor: colors.neutralBorder,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    minHeight: 42,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs
-  },
-  dropdownToggleText: {
-    ...typography.bodyStrong,
+  pageTitle: {
+    ...typography.title,
     color: colors.textPrimary
   },
-  dropdownToggleChevron: {
-    ...typography.helper,
-    color: colors.textMuted
+  sectionPickerCard: {
+    gap: spacing.md
   },
-  dropdownMenu: {
-    borderColor: colors.neutralBorder,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    overflow: "hidden"
+  sectionPickerHeader: {
+    gap: spacing.xxs
   },
-  dropdownOption: {
-    backgroundColor: colors.surface,
-    minHeight: 40,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm
-  },
-  dropdownOptionActive: {
-    backgroundColor: colors.infoSurface
-  },
-  dropdownOptionText: {
-    ...typography.helper,
-    color: colors.textPrimary,
-    fontWeight: "700"
-  },
-  dropdownOptionTextActive: {
-    color: colors.primaryStrong
+  sectionPickerTitle: {
+    ...typography.cardTitle,
+    color: colors.textPrimary
   }
 });
