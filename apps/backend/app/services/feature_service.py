@@ -5,7 +5,11 @@ import uuid
 from typing import Any
 
 from app.db.models import Feature
-from app.repositories.feature_repository import FeatureDeleteWriteError, FeatureRepository
+from app.repositories.feature_repository import FeatureRepository
+from app.repositories.request_feature_delete_repository import (
+    RequestFeatureDeleteRepository,
+    RequestFeatureDeleteWriteError,
+)
 
 
 class FeatureNotFoundError(Exception):
@@ -21,8 +25,14 @@ class FeatureDeleteError(Exception):
 
 
 class FeatureService:
-    def __init__(self, repository: FeatureRepository, owner_user_id: uuid.UUID) -> None:
+    def __init__(
+        self,
+        repository: FeatureRepository,
+        delete_repository: RequestFeatureDeleteRepository,
+        owner_user_id: uuid.UUID,
+    ) -> None:
         self._repository = repository
+        self._delete_repository = delete_repository
         self._owner_user_id = owner_user_id
 
     def get_latest_feature(self) -> dict[str, Any]:
@@ -49,40 +59,22 @@ class FeatureService:
         return [self._serialize_feature(feature) for feature in features]
 
     def delete_feature(self, *, feature_id: str) -> dict[str, str]:
-        feature = self._repository.get_feature_by_id_for_update(
-            user_id=str(self._owner_user_id),
-            feature_id=feature_id,
-        )
-        if feature is None:
-            self._repository.rollback()
-            raise FeatureNotFoundError(f"Feature {feature_id} was not found for current user.")
-
         try:
-            self._repository.delete_feature_labels(
+            deleted = self._delete_repository.delete_unit_by_feature_id(
                 user_id=str(self._owner_user_id),
-                feature_id=feature.id,
+                feature_id=feature_id,
                 commit=False,
             )
-            self._repository.null_requests_feature_reference(
-                user_id=str(self._owner_user_id),
-                feature_id=feature.id,
-                commit=False,
-            )
-            deleted = self._repository.delete_feature(
-                user_id=str(self._owner_user_id),
-                feature_id=feature.id,
-                commit=False,
-            )
-        except FeatureDeleteWriteError as exc:
-            self._repository.rollback()
+        except RequestFeatureDeleteWriteError as exc:
+            self._delete_repository.rollback()
             raise FeatureDeleteError(str(exc)) from exc
 
-        if not deleted:
-            self._repository.rollback()
+        if deleted is None:
+            self._delete_repository.rollback()
             raise FeatureNotFoundError(f"Feature {feature_id} was not found for current user.")
 
-        self._repository.commit()
-        return {"id": feature.id}
+        self._delete_repository.commit()
+        return {"id": feature_id}
 
     def _serialize_feature(self, feature: Feature) -> dict[str, Any]:
         try:

@@ -5,12 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.dependencies import get_feature_request_service
 from app.schemas.request_status import (
     PendingRequestCountResponse,
+    RequestDeleteResponse,
     RequestListResponse,
     RequestStatusResponse,
 )
 from app.schemas.responses import RequestResponse
 from app.services.feature_request_service import (
-    FeatureRequestConflictError,
+    FeatureRequestDeleteError,
     FeatureRequestNotFoundError,
     FeatureRequestService,
 )
@@ -55,25 +56,25 @@ def get_request_by_id(
 
 @router.delete(
     "/{request_id}",
-    response_model=RequestResponse,
-    summary="Cancel a pending request",
+    response_model=RequestDeleteResponse,
+    summary="Delete a request and any linked snapshot/labels.",
     responses={
         404: {"description": "Request not found for current user."},
-        409: {"description": "Request cannot be canceled in current state."},
+        500: {"description": "Linked delete failed and was rolled back."},
     },
 )
-def cancel_request(
+def delete_request(
     request_id: str,
     feature_request_service: Annotated[FeatureRequestService, Depends(get_feature_request_service)],
-    delete_feature_too: bool = Query(default=False, alias="deleteFeatureToo"),
-) -> RequestResponse:
+) -> RequestDeleteResponse:
+    """Delete the request delete-unit: request, linked snapshot, and linked labels."""
     try:
-        item = feature_request_service.cancel_request(
-            request_id=request_id,
-            delete_feature_too=delete_feature_too,
-        )
+        item = feature_request_service.delete_request(request_id=request_id)
     except FeatureRequestNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except FeatureRequestConflictError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    return RequestResponse(**item)
+    except FeatureRequestDeleteError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
+    return RequestDeleteResponse(**item)

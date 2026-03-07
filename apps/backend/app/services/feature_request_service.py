@@ -4,11 +4,12 @@ import uuid
 from typing import Any
 
 from app.repositories.feature_request_repository import (
-    CANCELED_STATUS,
-    FULFILLED_STATUS,
-    PENDING_STATUS,
     FeatureRequestRepository,
     FeatureRequestWriteError,
+)
+from app.repositories.request_feature_delete_repository import (
+    RequestFeatureDeleteRepository,
+    RequestFeatureDeleteWriteError,
 )
 
 
@@ -20,13 +21,19 @@ class FeatureRequestNotFoundError(Exception):
     pass
 
 
-class FeatureRequestConflictError(Exception):
+class FeatureRequestDeleteError(Exception):
     pass
 
 
 class FeatureRequestService:
-    def __init__(self, repository: FeatureRequestRepository, owner_user_id: uuid.UUID) -> None:
+    def __init__(
+        self,
+        repository: FeatureRequestRepository,
+        delete_repository: RequestFeatureDeleteRepository,
+        owner_user_id: uuid.UUID,
+    ) -> None:
         self._repository = repository
+        self._delete_repository = delete_repository
         self._owner_user_id = owner_user_id
 
     def create_request(self, *, client_features: dict[str, Any] | None = None) -> tuple[str, str]:
@@ -87,76 +94,26 @@ class FeatureRequestService:
                 target_user_id = stripped_user_id
         return self._repository.count_pending_requests(user_id=target_user_id)
 
-    def cancel_request(
+    def delete_request(
         self,
         *,
         request_id: str,
-        delete_feature_too: bool = False,
-    ) -> dict[str, Any]:
-        target_user_id = str(self._owner_user_id)
-        request = self._repository.get_request_by_id_for_user_for_update(
-            user_id=target_user_id,
-            request_id=request_id,
-        )
-        if request is None:
-            self._repository.rollback()
+    ) -> dict[str, str]:
+        try:
+            deleted = self._delete_repository.delete_unit_by_request_id(
+                user_id=str(self._owner_user_id),
+                request_id=request_id,
+                commit=False,
+            )
+        except RequestFeatureDeleteWriteError as exc:
+            self._delete_repository.rollback()
+            raise FeatureRequestDeleteError(str(exc)) from exc
+
+        if deleted is None:
+            self._delete_repository.rollback()
             raise FeatureRequestNotFoundError(
                 f"Request {request_id} was not found for current user."
             )
 
-        if request.status == FULFILLED_STATUS:
-            self._repository.rollback()
-            if delete_feature_too:
-                raise FeatureRequestConflictError(
-                    "Canceling fulfilled requests with deleteFeatureToo=true is not supported yet."
-                )
-            raise FeatureRequestConflictError(
-                f"Request {request_id} is already fulfilled and cannot be canceled."
-            )
-
-        if request.status == CANCELED_STATUS:
-            self._repository.rollback()
-            return {
-                "id": request.id,
-                "userId": request.user_id,
-                "createdAt": request.created_at,
-                "status": request.status,
-                "featureId": request.feature_id,
-                "source": request.source,
-            }
-
-        if request.status != PENDING_STATUS or request.feature_id is not None:
-            self._repository.rollback()
-            raise FeatureRequestConflictError(
-                f"Request {request_id} is in status '{request.status}' and cannot be canceled."
-            )
-
-        try:
-            updated = self._repository.set_request_status(
-                request_id=request.id,
-                user_id=request.user_id,
-                new_status=CANCELED_STATUS,
-                expected_current_status=PENDING_STATUS,
-                commit=False,
-            )
-        except FeatureRequestWriteError as exc:
-            self._repository.rollback()
-            raise FeatureRequestPersistenceError(str(exc)) from exc
-
-        if not updated:
-            self._repository.rollback()
-            raise FeatureRequestConflictError(
-                f"Request {request_id} could not be canceled because it changed concurrently."
-            )
-
-        self._repository.commit()
-        request.status = CANCELED_STATUS
-        request.feature_id = None
-        return {
-            "id": request.id,
-            "userId": request.user_id,
-            "createdAt": request.created_at,
-            "status": request.status,
-            "featureId": request.feature_id,
-            "source": request.source,
-        }
+        self._delete_repository.commit()
+        return {"id": request_id}
