@@ -6,6 +6,7 @@ export type FeatureRecord = {
   createdAt: number;
   source: string;
   data: FeatureData;
+  summaryMetadata?: Record<string, unknown> | null;
   extractorVersion?: string | null;
   windowStart?: string | null;
   windowEnd?: string | null;
