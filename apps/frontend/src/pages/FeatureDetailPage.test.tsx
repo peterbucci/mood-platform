@@ -32,6 +32,10 @@ const DETAIL_FEATURE: FeatureRecord = {
   },
   extractorVersion: "v3.2.1",
   id: "feature-detail-1",
+  label: {
+    category: "calm",
+    emotion: "Relaxed"
+  },
   source: "fitbit-pipeline",
   sourceTimezone: "America/New_York",
   userId: "00000000-0000-0000-0000-000000000001",
@@ -77,6 +81,9 @@ describe("FeatureDetailPage", () => {
       expect(getByText("Weekday Indicator")).toBeTruthy();
       expect(getByText("fitbit-pipeline")).toBeTruthy();
       expect(getByText("America/New_York")).toBeTruthy();
+      expect(getByText("Mood")).toBeTruthy();
+      expect(getByText("Calm")).toBeTruthy();
+      expect(getByText("— Relaxed")).toBeTruthy();
     });
   });
 
