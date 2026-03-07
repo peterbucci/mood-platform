@@ -71,12 +71,17 @@ def get_feature_by_id(
 @router.delete(
     "/{feature_id}",
     response_model=FeatureDeleteResponse,
-    summary="Delete a feature and clean up dependent objects.",
+    summary="Delete a snapshot and any linked request/labels.",
+    responses={
+        404: {"description": "Feature not found for current user."},
+        500: {"description": "Linked delete failed and was rolled back."},
+    },
 )
 def delete_feature_by_id(
     feature_id: str,
     feature_service: Annotated[FeatureService, Depends(get_feature_service)],
 ) -> FeatureDeleteResponse:
+    """Delete the snapshot delete-unit: feature, linked requests, and linked labels."""
     try:
         deleted = feature_service.delete_feature(feature_id=feature_id)
     except FeatureNotFoundError as exc:

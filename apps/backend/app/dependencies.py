@@ -16,6 +16,7 @@ from app.repositories.label_repository import LabelRepository
 from app.repositories.mood_entry_repository import MoodEntryRepository
 from app.repositories.postgres import PostgresRepository
 from app.repositories.redis import RedisRepository
+from app.repositories.request_feature_delete_repository import RequestFeatureDeleteRepository
 from app.repositories.webhook_job_repository import WebhookJobRepository
 from app.services.feature_request_service import FeatureRequestService
 from app.services.feature_service import FeatureService
@@ -79,6 +80,12 @@ def get_feature_request_repository(
     db_session: Annotated[Session, Depends(get_db_session)],
 ) -> FeatureRequestRepository:
     return FeatureRequestRepository(session=db_session)
+
+
+def get_request_feature_delete_repository(
+    db_session: Annotated[Session, Depends(get_db_session)],
+) -> RequestFeatureDeleteRepository:
+    return RequestFeatureDeleteRepository(session=db_session)
 
 
 def get_fitbit_oauth_repository(
@@ -145,18 +152,26 @@ def get_feature_request_service(
     feature_request_repository: Annotated[
         FeatureRequestRepository, Depends(get_feature_request_repository)
     ],
+    request_feature_delete_repository: Annotated[
+        RequestFeatureDeleteRepository, Depends(get_request_feature_delete_repository)
+    ],
 ) -> FeatureRequestService:
     return FeatureRequestService(
         repository=feature_request_repository,
+        delete_repository=request_feature_delete_repository,
         owner_user_id=get_owner_user_id(),
     )
 
 
 def get_feature_service(
     feature_repository: Annotated[FeatureRepository, Depends(get_feature_repository)],
+    request_feature_delete_repository: Annotated[
+        RequestFeatureDeleteRepository, Depends(get_request_feature_delete_repository)
+    ],
 ) -> FeatureService:
     return FeatureService(
         repository=feature_repository,
+        delete_repository=request_feature_delete_repository,
         owner_user_id=get_owner_user_id(),
     )
 

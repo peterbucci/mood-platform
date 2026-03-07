@@ -18,5 +18,9 @@ class RequestStatusResponse(BaseModel):
     createdAt: int
 
 
+class RequestDeleteResponse(BaseModel):
+    id: str
+
+
 class PendingRequestCountResponse(BaseModel):
     pendingCount: int
