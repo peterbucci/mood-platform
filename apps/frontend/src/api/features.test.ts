@@ -103,4 +103,38 @@ describe("features api module", () => {
       expect.objectContaining({ method: "DELETE" })
     );
   });
+
+  it("sets feature mood label using POST /labels", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { setFeatureLabel } = require("./features");
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      createMockResponse({
+        body: {
+          label: {
+            category: "calm",
+            emotion: "Relaxed"
+          }
+        },
+        status: 200
+      })
+    );
+
+    const label = await setFeatureLabel("f-1", "calm", "Relaxed");
+
+    expect(label).toEqual({
+      category: "calm",
+      emotion: "Relaxed"
+    });
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://api.example.test/labels",
+      expect.objectContaining({
+        body: JSON.stringify({
+          category: "calm",
+          emotionWord: "Relaxed",
+          featureId: "f-1"
+        }),
+        method: "POST"
+      })
+    );
+  });
 });

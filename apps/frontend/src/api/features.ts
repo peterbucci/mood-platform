@@ -1,5 +1,6 @@
 import type { FeatureDeleteResponse, FeatureListResponse, FeatureRecord } from "../types/features";
-import { apiDelete, apiGet } from "./client";
+import type { MoodCategory, MoodLabel } from "../types/mood";
+import { apiDelete, apiGet, apiPost } from "./client";
 import { createApiError } from "./errors";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -8,6 +9,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function pickString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function isMoodCategory(value: string): value is MoodCategory {
+  return value === "energized" || value === "calm" || value === "stressed" || value === "tired";
 }
 
 function toFeatureMoodLabel(payload: unknown): FeatureRecord["label"] {
@@ -29,6 +34,24 @@ function toFeatureMoodLabel(payload: unknown): FeatureRecord["label"] {
 
   return {
     category,
+    emotion
+  };
+}
+
+function toStrictMoodLabel(payload: unknown): MoodLabel | null {
+  const label = toFeatureMoodLabel(payload);
+  if (!label) {
+    return null;
+  }
+
+  const normalizedCategory = pickString(label.category)?.toLowerCase();
+  const emotion = pickString(label.emotion);
+  if (!normalizedCategory || !isMoodCategory(normalizedCategory) || !emotion) {
+    return null;
+  }
+
+  return {
+    category: normalizedCategory,
     emotion
   };
 }
@@ -112,4 +135,36 @@ export async function deleteFeature(featureId: string): Promise<FeatureDeleteRes
     throw createApiError({ message: "Invalid delete feature payload." });
   }
   return { id: payload.id };
+}
+
+export async function setFeatureLabel(
+  featureId: string,
+  category: MoodCategory,
+  emotion: string
+): Promise<MoodLabel> {
+  const payload = await apiPost<unknown>("/labels", {
+    category,
+    emotionWord: emotion,
+    featureId
+  });
+
+  const fromFeatureRecord = toFeatureRecord(payload);
+  const fromFeatureLabel = fromFeatureRecord ? toStrictMoodLabel(fromFeatureRecord.label) : null;
+  if (fromFeatureLabel) {
+    return fromFeatureLabel;
+  }
+
+  if (isRecord(payload)) {
+    const fromLabelField = toStrictMoodLabel(payload.label);
+    if (fromLabelField) {
+      return fromLabelField;
+    }
+  }
+
+  const fromDirectPayload = toStrictMoodLabel(payload);
+  if (fromDirectPayload) {
+    return fromDirectPayload;
+  }
+
+  throw createApiError({ message: "Invalid set feature label payload." });
 }
