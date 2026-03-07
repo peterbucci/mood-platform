@@ -36,9 +36,11 @@ class FeatureRequest(Base):
         ),
         sa.CheckConstraint(
             "(status != 'pending' OR \"featureId\" IS NULL) "
+            "AND (status != 'fulfilled' OR \"featureId\" IS NOT NULL) "
             "AND (status != 'canceled' OR \"featureId\" IS NULL)",
             name="ck_requests_feature_id_consistency",
         ),
+        sa.Index("ix_requests_feature_id", "featureId"),
         sa.Index("ix_requests_status", "status"),
         sa.Index("ix_requests_user_status", "userId", "status"),
     )
@@ -47,7 +49,11 @@ class FeatureRequest(Base):
     user_id: Mapped[str] = mapped_column("userId", sa.Text, nullable=False)
     created_at: Mapped[int] = mapped_column("createdAt", sa.Integer, nullable=False)
     status: Mapped[str] = mapped_column(sa.Text, nullable=False)
-    feature_id: Mapped[str | None] = mapped_column("featureId", sa.Text)
+    feature_id: Mapped[str | None] = mapped_column(
+        "featureId",
+        sa.Text,
+        sa.ForeignKey("features.id", ondelete="RESTRICT"),
+    )
     source: Mapped[str] = mapped_column(sa.Text, nullable=False)
     client_features_json: Mapped[str | None] = mapped_column("clientFeatures", sa.Text)
     attempts: Mapped[int] = mapped_column(
