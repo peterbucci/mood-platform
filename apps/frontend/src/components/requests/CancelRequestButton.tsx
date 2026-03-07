@@ -23,7 +23,7 @@ export default function CancelRequestButton({
         disabled || isLoading ? styles.buttonDisabled : null
       ]}
     >
-      <Text style={styles.buttonText}>{isLoading ? "Canceling..." : "Cancel Request"}</Text>
+      <Text style={styles.buttonText}>{isLoading ? "Canceling..." : "Cancel"}</Text>
     </Pressable>
   );
 }
@@ -31,7 +31,9 @@ export default function CancelRequestButton({
 const styles = StyleSheet.create({
   button: {
     alignSelf: "flex-start",
-    backgroundColor: colors.dangerText,
+    backgroundColor: colors.surface,
+    borderColor: colors.dangerBorder,
+    borderWidth: 1,
     borderRadius: radius.sm,
     minHeight: 34,
     paddingHorizontal: spacing.md,
@@ -42,7 +44,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     ...typography.helper,
-    color: colors.inverseText,
+    color: colors.dangerText,
     fontWeight: "700"
   }
 });

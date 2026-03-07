@@ -1,7 +1,7 @@
 import { StyleSheet, View } from "react-native";
 
 import type { FeatureRequestRecord } from "../../types/requests";
-import RequestRow from "./RequestRow";
+import RequestListItem from "./RequestListItem";
 
 type RequestListProps = {
   cancelErrorById?: Record<string, string>;
@@ -20,14 +20,15 @@ export default function RequestList({
 }: RequestListProps) {
   return (
     <View style={styles.container}>
-      {requests.map((request) => (
-        <RequestRow
+      {requests.map((request, index) => (
+        <RequestListItem
           key={request.id}
           cancelError={cancelErrorById?.[request.id]}
           isCanceling={Boolean(cancelingById?.[request.id])}
           onPressCancel={onPressCancel}
           onPressFeature={onPressFeature}
           request={request}
+          showDivider={index > 0}
         />
       ))}
     </View>
@@ -36,6 +37,6 @@ export default function RequestList({
 
 const styles = StyleSheet.create({
   container: {
-    gap: 8
+    gap: 0
   }
 });

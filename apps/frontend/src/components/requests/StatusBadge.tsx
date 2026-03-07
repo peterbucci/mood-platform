@@ -7,12 +7,12 @@ type StatusBadgeProps = {
 
 function getLabel(status: RequestStatus): string {
   if (status === "fulfilled") {
-    return "Fulfilled";
+    return "Ready";
   }
   if (status === "canceled") {
     return "Canceled";
   }
-  return "Pending";
+  return "In progress";
 }
 
 export default function StatusBadge({ status }: StatusBadgeProps) {
