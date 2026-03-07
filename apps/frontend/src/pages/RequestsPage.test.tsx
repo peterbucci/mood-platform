@@ -3,8 +3,8 @@ import { useIsFocused, useNavigation } from "@react-navigation/native";
 
 import { getFeatures } from "../api/features";
 import {
-  cancelRequest,
   createFeatureRequest,
+  deleteRequest,
   getPendingRequestCount,
   getRequests
 } from "../api/requests";
@@ -22,7 +22,7 @@ jest.mock("@react-navigation/native", () => ({
 
 const mockedGetFeatures = jest.mocked(getFeatures);
 const mockedCreateFeatureRequest = jest.mocked(createFeatureRequest);
-const mockedCancelRequest = jest.mocked(cancelRequest);
+const mockedDeleteRequest = jest.mocked(deleteRequest);
 const mockedGetPendingRequestCount = jest.mocked(getPendingRequestCount);
 const mockedGetRequests = jest.mocked(getRequests);
 const mockedUseIsFocused = jest.mocked(useIsFocused);
@@ -80,10 +80,7 @@ describe("RequestsPage", () => {
       requestId: "request-created-1",
       status: "pending"
     });
-    mockedCancelRequest.mockResolvedValue({
-      ...PENDING_REQUEST,
-      status: "canceled"
-    });
+    mockedDeleteRequest.mockResolvedValue({ id: PENDING_REQUEST.id });
     mockedGetRequests.mockResolvedValue([PENDING_REQUEST]);
     mockedGetPendingRequestCount.mockResolvedValue(1);
     mockedGetFeatures.mockResolvedValue([]);
@@ -112,7 +109,7 @@ describe("RequestsPage", () => {
       expect(getByText("Canceled")).toBeTruthy();
       expect(getByText("1 capture is processing. Updates appear automatically.")).toBeTruthy();
       expect(getByText("View feature details")).toBeTruthy();
-      expect(getByText("Cancel")).toBeTruthy();
+      expect(getAllByText("Delete").length).toBeGreaterThan(0);
     });
 
     expect(within(getByTestId(`request-item-${FULFILLED_REQUEST.id}`)).getByText("Relaxed")).toBeTruthy();
@@ -280,71 +277,99 @@ describe("RequestsPage", () => {
     });
   });
 
-  it("cancels a pending request and updates status to canceled", async () => {
-    const { getByText, queryByText } = render(<RequestsPage />);
+  it("opens a delete confirmation modal with cascading cleanup copy", async () => {
+    const { getByTestId, getByText } = render(<RequestsPage />);
 
     await waitFor(() => {
       expect(getByText("In progress")).toBeTruthy();
-      expect(getByText("Cancel")).toBeTruthy();
+      expect(getByTestId(`request-item-${PENDING_REQUEST.id}`)).toBeTruthy();
     });
 
-    fireEvent.press(getByText("Cancel"));
+    fireEvent.press(within(getByTestId(`request-item-${PENDING_REQUEST.id}`)).getByText("Delete"));
+
+    expect(getByText("Delete Request?")).toBeTruthy();
+    expect(getByText("This will permanently delete the request.")).toBeTruthy();
+    expect(
+      getByText("If this request has a linked feature snapshot, it will also be deleted.")
+    ).toBeTruthy();
+    expect(getByText("Any linked mood labels or related records will also be removed.")).toBeTruthy();
+    expect(getByText("This action cannot be undone.")).toBeTruthy();
+  });
+
+  it("deletes a request after confirmation and refreshes the list", async () => {
+    mockedGetRequests.mockResolvedValueOnce([PENDING_REQUEST, FULFILLED_REQUEST]).mockResolvedValueOnce([FULFILLED_REQUEST]);
+    mockedGetPendingRequestCount.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+
+    const { getByTestId, getByText, queryByTestId } = render(<RequestsPage />);
 
     await waitFor(() => {
-      expect(mockedCancelRequest).toHaveBeenCalledWith(PENDING_REQUEST.id);
-      expect(getByText("Canceled")).toBeTruthy();
-      expect(queryByText("Cancel")).toBeNull();
+      expect(getByTestId(`request-item-${PENDING_REQUEST.id}`)).toBeTruthy();
+    });
+
+    fireEvent.press(within(getByTestId(`request-item-${PENDING_REQUEST.id}`)).getByText("Delete"));
+    fireEvent.press(getByTestId("confirm-delete-request-button"));
+
+    await waitFor(() => {
+      expect(mockedDeleteRequest).toHaveBeenCalledWith(PENDING_REQUEST.id);
+      expect(queryByTestId(`request-item-${PENDING_REQUEST.id}`)).toBeNull();
+      expect(getByText("Request deleted successfully.")).toBeTruthy();
     });
   });
 
-  it("shows cancel error when backend rejects cancellation", async () => {
-    mockedCancelRequest.mockRejectedValueOnce(new Error("Request cannot be canceled."));
+  it("shows delete error when backend rejects deletion", async () => {
+    mockedDeleteRequest.mockRejectedValueOnce(new Error("Request cannot be deleted."));
 
-    const { getByText } = render(<RequestsPage />);
+    const { getAllByText, getByTestId, getByText } = render(<RequestsPage />);
 
     await waitFor(() => {
-      expect(getByText("Cancel")).toBeTruthy();
+      expect(getByTestId(`request-item-${PENDING_REQUEST.id}`)).toBeTruthy();
     });
 
-    fireEvent.press(getByText("Cancel"));
+    fireEvent.press(within(getByTestId(`request-item-${PENDING_REQUEST.id}`)).getByText("Delete"));
+    fireEvent.press(getByTestId("confirm-delete-request-button"));
 
     await waitFor(() => {
-      expect(getByText("Request cannot be canceled.")).toBeTruthy();
-      expect(getByText("Cancel")).toBeTruthy();
+      expect(getByText("Unable to delete request")).toBeTruthy();
+      expect(getAllByText("Unable to delete request. Please try again.").length).toBeGreaterThan(
+        0
+      );
+      expect(getByTestId(`request-item-${PENDING_REQUEST.id}`)).toBeTruthy();
     });
   });
 
-  it("prevents repeated rapid cancellation taps", async () => {
-    let resolveCancel:
-      | ((value: FeatureRequestRecord | PromiseLike<FeatureRequestRecord>) => void)
+  it("prevents repeated rapid deletion confirmations", async () => {
+    mockedGetRequests.mockResolvedValueOnce([PENDING_REQUEST]).mockResolvedValueOnce([]);
+    mockedGetPendingRequestCount.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+
+    let resolveDelete:
+      | ((value: { id: string } | PromiseLike<{ id: string }>) => void)
       | undefined;
-    mockedCancelRequest.mockImplementationOnce(
+    mockedDeleteRequest.mockImplementationOnce(
       () =>
-        new Promise<FeatureRequestRecord>((resolve) => {
-          resolveCancel = resolve;
+        new Promise<{ id: string }>((resolve) => {
+          resolveDelete = resolve;
         })
     );
 
-    const { getByText } = render(<RequestsPage />);
+    const { getByTestId, queryByTestId } = render(<RequestsPage />);
 
     await waitFor(() => {
-      expect(getByText("Cancel")).toBeTruthy();
+      expect(getByTestId(`request-item-${PENDING_REQUEST.id}`)).toBeTruthy();
     });
 
-    const cancelButton = getByText("Cancel");
-    fireEvent.press(cancelButton);
-    fireEvent.press(cancelButton);
+    fireEvent.press(within(getByTestId(`request-item-${PENDING_REQUEST.id}`)).getByText("Delete"));
 
-    expect(mockedCancelRequest).toHaveBeenCalledTimes(1);
+    const confirmDeleteButton = getByTestId("confirm-delete-request-button");
+    fireEvent.press(confirmDeleteButton);
+    fireEvent.press(confirmDeleteButton);
 
-    expect(resolveCancel).toBeDefined();
-    resolveCancel?.({
-      ...PENDING_REQUEST,
-      status: "canceled"
-    });
+    expect(mockedDeleteRequest).toHaveBeenCalledTimes(1);
+
+    expect(resolveDelete).toBeDefined();
+    resolveDelete?.({ id: PENDING_REQUEST.id });
 
     await waitFor(() => {
-      expect(getByText("Canceled")).toBeTruthy();
+      expect(queryByTestId(`request-item-${PENDING_REQUEST.id}`)).toBeNull();
     });
   });
 });
