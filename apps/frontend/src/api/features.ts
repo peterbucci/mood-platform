@@ -26,6 +26,12 @@ function toFeatureRecord(payload: unknown): FeatureRecord | null {
     createdAt: payload.createdAt,
     source: payload.source,
     data,
+    summaryMetadata:
+      isRecord(payload.summaryMetadata)
+        ? payload.summaryMetadata
+        : isRecord(payload.summary_metadata)
+          ? payload.summary_metadata
+          : null,
     extractorVersion:
       typeof payload.extractorVersion === "string" ? payload.extractorVersion : null,
     windowStart: typeof payload.windowStart === "string" ? payload.windowStart : null,
