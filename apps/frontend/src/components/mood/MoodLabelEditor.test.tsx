@@ -6,7 +6,7 @@ describe("MoodLabelEditor", () => {
   it("prefills editor fields when feature already has label", async () => {
     const onSaveLabel = jest.fn().mockResolvedValue(undefined);
 
-    const { getByText } = render(
+    const { getByTestId, getByText } = render(
       <MoodLabelEditor
         initialLabel={{ category: "calm", emotion: "Relaxed" }}
         onSaveLabel={onSaveLabel}
@@ -15,8 +15,8 @@ describe("MoodLabelEditor", () => {
 
     await waitFor(() => {
       expect(getByText("Update Mood Label")).toBeTruthy();
-      expect(getByText("Selected Category: Calm")).toBeTruthy();
-      expect(getByText("Selected Emotion: Relaxed")).toBeTruthy();
+      expect(getByTestId("mood-category-option-calm")).toBeTruthy();
+      expect(getByTestId("mood-emotion-option-relaxed")).toBeTruthy();
     });
   });
 
@@ -29,29 +29,26 @@ describe("MoodLabelEditor", () => {
 
     await waitFor(() => {
       expect(getByText("Add Mood Label")).toBeTruthy();
-      expect(getByText("Selected Category: Not selected")).toBeTruthy();
-      expect(getByText("Selected Emotion: Not selected")).toBeTruthy();
+      expect(getByText("Select a category first.")).toBeTruthy();
     });
   });
 
   it("updates emotion options when category changes", async () => {
     const onSaveLabel = jest.fn().mockResolvedValue(undefined);
 
-    const { getByTestId, getByText, queryByTestId } = render(
+    const { getByTestId, queryByTestId } = render(
       <MoodLabelEditor initialLabel={undefined} onSaveLabel={onSaveLabel} />
     );
 
     fireEvent.press(getByTestId("mood-category-option-calm"));
 
     await waitFor(() => {
-      expect(getByText("Selected Emotion: Calm")).toBeTruthy();
       expect(getByTestId("mood-emotion-option-peaceful")).toBeTruthy();
     });
 
     fireEvent.press(getByTestId("mood-category-option-stressed"));
 
     await waitFor(() => {
-      expect(getByText("Selected Emotion: Stressed")).toBeTruthy();
       expect(getByTestId("mood-emotion-option-anxious")).toBeTruthy();
       expect(queryByTestId("mood-emotion-option-peaceful")).toBeNull();
     });

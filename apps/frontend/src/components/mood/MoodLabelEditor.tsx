@@ -3,7 +3,6 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { colors, spacing, typography } from "../../theme";
 import type { MoodCategory, MoodLabelValue } from "../../types/mood";
-import { formatMoodCategory } from "../../utils/moodFormatting";
 import {
   getDefaultEmotionForCategory,
   isMoodCategory,
@@ -140,12 +139,6 @@ export default function MoodLabelEditor({ initialLabel, onSaveLabel }: MoodLabel
         onSelectEmotion={handleSelectEmotion}
         selectedEmotion={selectedEmotion}
       />
-      <Text style={styles.selectionText} testID="mood-editor-category-value">
-        Selected Category: {selectedCategory ? formatMoodCategory(selectedCategory) : "Not selected"}
-      </Text>
-      <Text style={styles.selectionText} testID="mood-editor-emotion-value">
-        Selected Emotion: {selectedEmotion ?? "Not selected"}
-      </Text>
 
       <AppButton
         disabled={isSaving || !selectedCategory || !selectedEmotion}
@@ -169,10 +162,6 @@ const styles = StyleSheet.create({
   title: {
     ...typography.cardTitle,
     color: colors.textPrimary
-  },
-  selectionText: {
-    ...typography.helper,
-    color: colors.textSecondary
   },
   saveButton: {
     alignSelf: "flex-start"

@@ -95,8 +95,6 @@ describe("FeatureDetailPage", () => {
       expect(getByText("Mood")).toBeTruthy();
       expect(getAllByText("Calm").length).toBeGreaterThan(0);
       expect(getByText("- Relaxed")).toBeTruthy();
-      expect(getByText("Selected Category: Calm")).toBeTruthy();
-      expect(getByText("Selected Emotion: Relaxed")).toBeTruthy();
     });
   });
 
@@ -110,8 +108,7 @@ describe("FeatureDetailPage", () => {
     await waitFor(() => {
       expect(getByText("Mood")).toBeTruthy();
       expect(getByText("Not labeled")).toBeTruthy();
-      expect(getByText("Selected Category: Not selected")).toBeTruthy();
-      expect(getByText("Selected Emotion: Not selected")).toBeTruthy();
+      expect(getByText("Select a category first.")).toBeTruthy();
     });
   });
 
@@ -173,7 +170,6 @@ describe("FeatureDetailPage", () => {
 
     await waitFor(() => {
       expect(getByText("- Calm")).toBeTruthy();
-      expect(getByText("Selected Category: Calm")).toBeTruthy();
     });
   });
 

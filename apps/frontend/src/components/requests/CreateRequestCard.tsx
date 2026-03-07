@@ -7,7 +7,6 @@ import CategorySelector from "../mood/CategorySelector";
 import EmotionSelector from "../mood/EmotionSelector";
 import type { CreateFeatureRequestResponse } from "../../types/requests";
 import type { MoodCategory } from "../../types/mood";
-import { formatMoodCategory } from "../../utils/moodFormatting";
 import { getDefaultEmotionForCategory, isValidEmotionForCategory } from "../../utils/moodTaxonomy";
 import AppButton from "../ui/AppButton";
 import AppCard from "../ui/AppCard";
@@ -92,11 +91,6 @@ export default function CreateRequestCard({ onCreated }: CreateRequestCardProps)
         onSelectEmotion={handleSelectEmotion}
         selectedEmotion={selectedEmotion}
       />
-      <Text style={styles.selectionText}>
-        Selected Category:{" "}
-        {selectedCategory ? formatMoodCategory(selectedCategory) : "Not selected"}
-      </Text>
-      <Text style={styles.selectionText}>Selected Emotion: {selectedEmotion ?? "Not selected"}</Text>
       <AppButton
         disabled={isSubmitting || !selectedCategory || !selectedEmotion}
         isLoading={isSubmitting}
@@ -126,10 +120,6 @@ const styles = StyleSheet.create({
   title: {
     ...typography.sectionTitle,
     color: colors.textPrimary
-  },
-  selectionText: {
-    ...typography.helper,
-    color: colors.textSecondary
   },
   successTitle: {
     ...typography.bodyStrong,
