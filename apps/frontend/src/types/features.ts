@@ -17,3 +17,7 @@ export type FeatureListResponse = {
   limit: number;
   offset: number;
 };
+
+export type FeatureDeleteResponse = {
+  id: string;
+};

@@ -4,29 +4,8 @@ import type {
   PendingRequestCountResponse,
   RequestListResponse
 } from "../types/requests";
-
-const DEFAULT_API_BASE_URL = "http://localhost:8000";
-
-function getApiBaseUrl(): string {
-  const configured = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
-  if (configured) {
-    return configured.replace(/\/+$/, "");
-  }
-  return DEFAULT_API_BASE_URL;
-}
-
-function buildApiUrl(path: string): string {
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${getApiBaseUrl()}${normalizedPath}`;
-}
-
-async function parseJson(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch {
-    return null;
-  }
-}
+import { apiDelete, apiGet, apiPost } from "./client";
+import { createApiError } from "./errors";
 
 function parseRequestStatus(value: unknown): CreateFeatureRequestResponse["status"] | null {
   if (value === "pending" || value === "fulfilled" || value === "canceled") {
@@ -61,22 +40,11 @@ function toRequestRecord(payload: unknown): FeatureRequestRecord | null {
 }
 
 export async function createFeatureRequest(): Promise<CreateFeatureRequestResponse> {
-  const response = await fetch(buildApiUrl("/features/request"), {
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json"
-    },
-    method: "POST"
-  });
-  const payload = (await parseJson(response)) as Partial<CreateFeatureRequestResponse> | null;
-
-  if (!response.ok) {
-    throw new Error("Failed to create feature request.");
-  }
+  const payload = await apiPost<Partial<CreateFeatureRequestResponse>>("/features/request");
 
   const status = parseRequestStatus(payload?.status);
   if (!payload || typeof payload.requestId !== "string" || status === null) {
-    throw new Error("Invalid create feature request payload.");
+    throw createApiError({ message: "Invalid create feature request payload." });
   }
 
   return {
@@ -86,43 +54,33 @@ export async function createFeatureRequest(): Promise<CreateFeatureRequestRespon
 }
 
 export async function getRequests(limit = 20, offset = 0): Promise<FeatureRequestRecord[]> {
-  const query = new URLSearchParams({
-    limit: String(limit),
-    offset: String(offset)
-  });
-  const response = await fetch(buildApiUrl(`/requests?${query.toString()}`), {
-    headers: {
-      Accept: "application/json"
-    }
-  });
-  const payload = (await parseJson(response)) as Partial<RequestListResponse> | null;
+  const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  const queriedPayload = await apiGet<Partial<RequestListResponse>>(`/requests?${query.toString()}`);
 
-  if (!response.ok) {
-    throw new Error("Failed to fetch feature requests.");
-  }
-  if (!payload || !Array.isArray(payload.items)) {
-    throw new Error("Invalid request list payload.");
+  if (!queriedPayload || !Array.isArray(queriedPayload.items)) {
+    throw createApiError({ message: "Invalid request list payload." });
   }
 
-  return payload.items
+  return queriedPayload.items
     .map((item) => toRequestRecord(item))
     .filter((item): item is FeatureRequestRecord => item !== null);
 }
 
 export async function getPendingRequestCount(): Promise<number> {
-  const response = await fetch(buildApiUrl("/requests/pending/count"), {
-    headers: {
-      Accept: "application/json"
-    }
-  });
-  const payload = (await parseJson(response)) as Partial<PendingRequestCountResponse> | null;
+  const payload = await apiGet<Partial<PendingRequestCountResponse>>("/requests/pending/count");
 
-  if (!response.ok) {
-    throw new Error("Failed to fetch pending request count.");
-  }
   if (!payload || typeof payload.pendingCount !== "number") {
-    throw new Error("Invalid pending request count payload.");
+    throw createApiError({ message: "Invalid pending request count payload." });
   }
 
   return payload.pendingCount;
+}
+
+export async function cancelRequest(requestId: string): Promise<FeatureRequestRecord> {
+  const payload = await apiDelete<Partial<FeatureRequestRecord>>(`/requests/${requestId}`);
+  const record = toRequestRecord(payload);
+  if (!record) {
+    throw createApiError({ message: "Invalid cancel request payload." });
+  }
+  return record;
 }
