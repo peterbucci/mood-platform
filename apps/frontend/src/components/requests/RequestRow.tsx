@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors, radius, spacing, typography } from "../../theme";
 import type { FeatureRequestRecord } from "../../types/requests";
+import { getMoodDisplayModel } from "../../utils/moodFormatting";
 import CancelRequestButton from "./CancelRequestButton";
 import StatusBadge from "./StatusBadge";
 
@@ -30,13 +31,14 @@ export default function RequestRow({
 }: RequestRowProps) {
   const featureId = request.featureId;
   const isPending = request.status === "pending";
+  const mood = getMoodDisplayModel(request.label);
 
   return (
     <View style={styles.row}>
       <Text style={styles.requestId}>Request ID: {request.id}</Text>
       <StatusBadge status={request.status} />
       <Text style={styles.meta}>Created: {formatTimestamp(request.createdAt)}</Text>
-      <Text style={styles.meta}>Source: {request.source}</Text>
+      <Text style={styles.meta}>Mood: {mood.text}</Text>
       {featureId ? (
         <View style={styles.featureContainer}>
           <Text style={styles.meta}>Feature ID: {featureId}</Text>

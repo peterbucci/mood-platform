@@ -16,6 +16,8 @@ import EmotionSelector from "./EmotionSelector";
 type MoodLabelEditorProps = {
   initialLabel: MoodLabelValue;
   onSaveLabel: (category: MoodCategory, emotion: string) => Promise<void>;
+  onCancel?: () => void;
+  showTitle?: boolean;
 };
 
 type EditableMoodSelection = {
@@ -58,7 +60,12 @@ function getInitialSelection(label: MoodLabelValue): EditableMoodSelection {
   };
 }
 
-export default function MoodLabelEditor({ initialLabel, onSaveLabel }: MoodLabelEditorProps) {
+export default function MoodLabelEditor({
+  initialLabel,
+  onSaveLabel,
+  onCancel,
+  showTitle = true
+}: MoodLabelEditorProps) {
   const [selectedCategory, setSelectedCategory] = useState<MoodCategory | null>(null);
   const [selectedEmotion, setSelectedEmotion] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -127,7 +134,9 @@ export default function MoodLabelEditor({ initialLabel, onSaveLabel }: MoodLabel
 
   return (
     <AppCard style={styles.card}>
-      <Text style={styles.title}>{isInitiallyLabeled ? "Update Mood Label" : "Add Mood Label"}</Text>
+      {showTitle ? (
+        <Text style={styles.title}>{isInitiallyLabeled ? "Update Mood Label" : "Add Mood Label"}</Text>
+      ) : null}
       <CategorySelector
         disabled={isSaving}
         onSelectCategory={handleSelectCategory}
@@ -140,14 +149,34 @@ export default function MoodLabelEditor({ initialLabel, onSaveLabel }: MoodLabel
         selectedEmotion={selectedEmotion}
       />
 
-      <AppButton
-        disabled={isSaving || !selectedCategory || !selectedEmotion}
-        isLoading={isSaving}
-        label="Save Label"
-        onPress={handleSave}
-        style={styles.saveButton}
-        testID="mood-save-button"
-      />
+      {onCancel ? (
+        <View style={styles.actions}>
+          <AppButton
+            disabled={isSaving || !selectedCategory || !selectedEmotion}
+            isLoading={isSaving}
+            label="Save Label"
+            onPress={handleSave}
+            style={styles.button}
+            testID="mood-save-button"
+          />
+          <AppButton
+            disabled={isSaving}
+            label="Cancel"
+            onPress={onCancel}
+            style={styles.button}
+            variant="danger"
+          />
+        </View>
+      ) : (
+        <AppButton
+          disabled={isSaving || !selectedCategory || !selectedEmotion}
+          isLoading={isSaving}
+          label="Save Label"
+          onPress={handleSave}
+          style={styles.saveButton}
+          testID="mood-save-button"
+        />
+      )}
 
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
       {successMessage ? <Text style={styles.successText}>{successMessage}</Text> : null}
@@ -165,6 +194,15 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     alignSelf: "flex-start"
+  },
+  actions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm
+  },
+  button: {
+    alignSelf: "flex-start",
+    minWidth: 108
   },
   errorText: {
     ...typography.bodyStrong,

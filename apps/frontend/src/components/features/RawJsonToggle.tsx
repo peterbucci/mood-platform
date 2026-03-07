@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { colors, radius, spacing, typography } from "../../theme";
 
 type RawJsonToggleProps = {
   payload: unknown;
+  showToggle?: boolean;
 };
 
-export default function RawJsonToggle({ payload }: RawJsonToggleProps) {
-  const [expanded, setExpanded] = useState(false);
+export default function RawJsonToggle({ payload, showToggle = true }: RawJsonToggleProps) {
+  const [expanded, setExpanded] = useState(!showToggle);
 
   const rawJson = useMemo(() => {
     try {
@@ -18,9 +20,15 @@ export default function RawJsonToggle({ payload }: RawJsonToggleProps) {
 
   return (
     <View style={styles.container}>
-      <Pressable accessibilityRole="button" onPress={() => setExpanded((current) => !current)} style={styles.button}>
-        <Text style={styles.buttonText}>{expanded ? "Hide Raw JSON" : "Show Raw JSON"}</Text>
-      </Pressable>
+      {showToggle ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setExpanded((current) => !current)}
+          style={styles.button}
+        >
+          <Text style={styles.buttonText}>{expanded ? "Hide Raw JSON" : "Show Raw JSON"}</Text>
+        </Pressable>
+      ) : null}
       {expanded ? (
         <View style={styles.rawContainer}>
           <Text selectable style={styles.rawText}>
@@ -34,26 +42,27 @@ export default function RawJsonToggle({ payload }: RawJsonToggleProps) {
 
 const styles = StyleSheet.create({
   container: {
-    gap: 8
+    gap: spacing.sm
   },
   button: {
     alignSelf: "flex-start",
-    backgroundColor: "#1f2937",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8
+    backgroundColor: colors.textPrimary,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
   },
   buttonText: {
-    color: "#ffffff",
-    fontSize: 13,
+    ...typography.helper,
+    color: colors.inverseText,
     fontWeight: "700"
   },
   rawContainer: {
     backgroundColor: "#0f172a",
-    borderRadius: 12,
-    padding: 12
+    borderRadius: radius.md,
+    padding: spacing.md
   },
   rawText: {
+    ...typography.helper,
     color: "#e2e8f0",
     fontFamily: "monospace",
     fontSize: 11

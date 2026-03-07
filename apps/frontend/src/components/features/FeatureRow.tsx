@@ -2,15 +2,12 @@ import { Pressable, StyleSheet, Text } from "react-native";
 
 import { colors, radius, spacing, typography } from "../../theme";
 import type { FeatureRecord } from "../../types/features";
+import { getMoodDisplayModel } from "../../utils/moodFormatting";
 
 type FeatureRowProps = {
   feature: FeatureRecord;
   onPress: (featureId: string) => void;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 function formatTimestamp(createdAt: number): string {
   const parsed = new Date(createdAt * 1000);
@@ -20,18 +17,9 @@ function formatTimestamp(createdAt: number): string {
   return parsed.toLocaleString();
 }
 
-function getSummaryIndicator(feature: FeatureRecord): string {
-  const summaryMetadata = isRecord(feature.summaryMetadata) ? feature.summaryMetadata : null;
-  if (summaryMetadata) {
-    const summaryFields = Object.keys(summaryMetadata).length;
-    return `${summaryFields} summary field${summaryFields === 1 ? "" : "s"}`;
-  }
-
-  const sectionCount = Object.keys(feature.data).length;
-  return `${sectionCount} section${sectionCount === 1 ? "" : "s"}`;
-}
-
 export default function FeatureRow({ feature, onPress }: FeatureRowProps) {
+  const mood = getMoodDisplayModel(feature.label);
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -39,9 +27,9 @@ export default function FeatureRow({ feature, onPress }: FeatureRowProps) {
       style={styles.row}
       testID={`feature-row-${feature.id}`}
     >
-      <Text style={styles.captureTime}>Capture: {formatTimestamp(feature.createdAt)}</Text>
-      <Text style={styles.meta}>Source: {feature.source}</Text>
-      <Text style={styles.meta}>Summary: {getSummaryIndicator(feature)}</Text>
+      <Text style={styles.captureTime}>Feature ID: {feature.id}</Text>
+      <Text style={styles.meta}>Captured: {formatTimestamp(feature.createdAt)}</Text>
+      <Text style={styles.meta}>Mood: {mood.text}</Text>
     </Pressable>
   );
 }

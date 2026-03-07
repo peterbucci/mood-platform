@@ -15,6 +15,42 @@ function parseRequestStatus(value: unknown): CreateFeatureRequestResponse["statu
   return null;
 }
 
+function pickString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function toRequestMoodLabel(payload: unknown): FeatureRequestRecord["label"] {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+
+  const record = payload as Record<string, unknown>;
+  const labelCandidate =
+    (typeof record.label === "object" ? record.label : undefined) ??
+    (typeof record.moodLabel === "object" ? record.moodLabel : undefined) ??
+    (typeof record.mood_label === "object" ? record.mood_label : undefined);
+
+  if (!labelCandidate || typeof labelCandidate !== "object") {
+    return undefined;
+  }
+
+  const labelRecord = labelCandidate as Record<string, unknown>;
+  const category = pickString(labelRecord.category);
+  const emotion =
+    pickString(labelRecord.emotion) ??
+    pickString(labelRecord.emotionWord) ??
+    pickString(labelRecord.emotion_word);
+
+  if (!category && !emotion) {
+    return undefined;
+  }
+
+  return {
+    category,
+    emotion
+  };
+}
+
 function toRequestRecord(payload: unknown): FeatureRequestRecord | null {
   if (!payload || typeof payload !== "object") {
     return null;
@@ -36,7 +72,8 @@ function toRequestRecord(payload: unknown): FeatureRequestRecord | null {
     createdAt: record.createdAt,
     status: parsedStatus,
     featureId: typeof record.featureId === "string" ? record.featureId : null,
-    source: record.source
+    source: record.source,
+    label: toRequestMoodLabel(payload)
   };
 }
 

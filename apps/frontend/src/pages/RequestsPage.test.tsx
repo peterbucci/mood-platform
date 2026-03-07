@@ -1,6 +1,7 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 
+import { getFeatures } from "../api/features";
 import {
   cancelRequest,
   createFeatureRequest,
@@ -12,12 +13,14 @@ import type { FeatureRequestRecord } from "../types/requests";
 import RequestsPage from "./RequestsPage";
 
 jest.mock("../api/requests");
+jest.mock("../api/features");
 jest.mock("@react-navigation/native", () => ({
   ...jest.requireActual("@react-navigation/native"),
   useIsFocused: jest.fn(),
   useNavigation: jest.fn()
 }));
 
+const mockedGetFeatures = jest.mocked(getFeatures);
 const mockedCreateFeatureRequest = jest.mocked(createFeatureRequest);
 const mockedCancelRequest = jest.mocked(cancelRequest);
 const mockedGetPendingRequestCount = jest.mocked(getPendingRequestCount);
@@ -52,6 +55,18 @@ const CANCELED_REQUEST: FeatureRequestRecord = {
   userId: "00000000-0000-0000-0000-000000000001"
 };
 
+const FEATURE_FOR_FULFILLED = {
+  createdAt: 1_772_800_100,
+  data: { sleep: { total_sleep_minutes: 400 } },
+  id: "feature-fulfilled-1",
+  label: {
+    category: "calm" as const,
+    emotion: "Relaxed"
+  },
+  source: "fitbit-pipeline",
+  userId: "00000000-0000-0000-0000-000000000001"
+};
+
 describe("RequestsPage", () => {
   beforeEach(() => {
     jest.resetAllMocks();
@@ -69,21 +84,57 @@ describe("RequestsPage", () => {
     });
     mockedGetRequests.mockResolvedValue([PENDING_REQUEST]);
     mockedGetPendingRequestCount.mockResolvedValue(1);
+    mockedGetFeatures.mockResolvedValue([]);
   });
 
   it("renders pending, fulfilled, and canceled request statuses", async () => {
     mockedGetRequests.mockResolvedValue([PENDING_REQUEST, FULFILLED_REQUEST, CANCELED_REQUEST]);
     mockedGetPendingRequestCount.mockResolvedValue(1);
+    mockedGetFeatures.mockResolvedValue([FEATURE_FOR_FULFILLED]);
 
-    const { getByText, queryAllByText } = render(<RequestsPage />);
+    const { getAllByText, getByText, queryAllByText } = render(<RequestsPage />);
 
     await waitFor(() => {
       expect(getByText("Pending")).toBeTruthy();
       expect(getByText("Fulfilled")).toBeTruthy();
       expect(getByText("Canceled")).toBeTruthy();
       expect(getByText("Feature ID: feature-fulfilled-1")).toBeTruthy();
+      expect(getByText("Mood: Calm - Relaxed")).toBeTruthy();
+      expect(getAllByText("Mood: Not labeled").length).toBeGreaterThan(0);
       expect(getByText("Cancel Request")).toBeTruthy();
       expect(queryAllByText("Cancel Request")).toHaveLength(1);
+    });
+  });
+
+  it("shows the selected mood label on newly created pending requests", async () => {
+    const createdRequestId = "request-created-1";
+    mockedCreateFeatureRequest.mockResolvedValueOnce({
+      requestId: createdRequestId,
+      status: "pending"
+    });
+    mockedGetRequests
+      .mockResolvedValueOnce([PENDING_REQUEST])
+      .mockResolvedValueOnce([
+        {
+          ...PENDING_REQUEST,
+          id: createdRequestId
+        }
+      ]);
+    mockedGetPendingRequestCount.mockResolvedValue(1);
+
+    const { getAllByText, getByTestId, getByText } = render(<RequestsPage />);
+
+    await waitFor(() => {
+      expect(getByTestId("mood-category-option-calm")).toBeTruthy();
+    });
+
+    fireEvent.press(getByTestId("mood-category-option-calm"));
+    fireEvent.press(getByTestId("mood-emotion-option-relaxed"));
+    fireEvent.press(getByTestId("log-emotion-button"));
+
+    await waitFor(() => {
+      expect(getAllByText(`Request ID: ${createdRequestId}`).length).toBeGreaterThan(0);
+      expect(getByText("Mood: Calm - Relaxed")).toBeTruthy();
     });
   });
 

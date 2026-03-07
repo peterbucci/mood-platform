@@ -21,6 +21,10 @@ const FEATURE_A: FeatureRecord = {
     derived: { dayOfWeek: 2 }
   },
   id: "feature-a",
+  label: {
+    category: "calm",
+    emotion: "Relaxed"
+  },
   source: "fitbit-pipeline",
   summaryMetadata: { quality: "good", completeness: 0.95 },
   userId: "00000000-0000-0000-0000-000000000001"
@@ -47,13 +51,14 @@ describe("FeaturesPage", () => {
   it("renders multiple feature records", async () => {
     mockedGetFeatures.mockResolvedValue([FEATURE_A, FEATURE_B]);
 
-    const { getAllByText, getByText } = render(<FeaturesPage />);
+    const { getByText } = render(<FeaturesPage />);
 
     await waitFor(() => {
       expect(getByText("Features")).toBeTruthy();
-      expect(getAllByText(`Source: ${FEATURE_A.source}`)).toHaveLength(2);
-      expect(getByText("Summary: 2 summary fields")).toBeTruthy();
-      expect(getByText("Summary: 1 section")).toBeTruthy();
+      expect(getByText("Feature ID: feature-a")).toBeTruthy();
+      expect(getByText("Feature ID: feature-b")).toBeTruthy();
+      expect(getByText("Mood: Calm - Relaxed")).toBeTruthy();
+      expect(getByText("Mood: Not labeled")).toBeTruthy();
     });
   });
 

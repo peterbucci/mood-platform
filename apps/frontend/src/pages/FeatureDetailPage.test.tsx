@@ -1,6 +1,6 @@
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
 
-import { getFeatureById, setFeatureLabel } from "../api/features";
+import { getFeatureById } from "../api/features";
 import { createApiError } from "../api/errors";
 import type { RootStackParamList } from "../router/AppRouter";
 import type { FeatureRecord } from "../types/features";
@@ -9,7 +9,6 @@ import FeatureDetailPage from "./FeatureDetailPage";
 jest.mock("../api/features");
 
 const mockedGetFeatureById = jest.mocked(getFeatureById);
-const mockedSetFeatureLabel = jest.mocked(setFeatureLabel);
 
 const DETAIL_FEATURE: FeatureRecord = {
   createdAt: 1_772_800_000,
@@ -51,8 +50,12 @@ const UNLABELED_FEATURE: FeatureRecord = {
 };
 
 function makeProps(id: string) {
+  const navigation = {
+    navigate: jest.fn()
+  } as never;
+
   return {
-    navigation: {} as never,
+    navigation,
     route: {
       key: `FeatureDetail-${id}`,
       name: "FeatureDetail",
@@ -68,129 +71,84 @@ function makeProps(id: string) {
 describe("FeatureDetailPage", () => {
   beforeEach(() => {
     jest.resetAllMocks();
-    mockedSetFeatureLabel.mockResolvedValue({
-      category: "calm",
-      emotion: "Relaxed"
-    });
   });
 
-  it("loads a feature by id and renders readable grouped detail", async () => {
+  it("loads a feature by id and renders grouped detail with dropdown section navigation", async () => {
     mockedGetFeatureById.mockResolvedValue(DETAIL_FEATURE);
 
-    const { getAllByText, getByText } = render(<FeatureDetailPage {...makeProps("feature-detail-1")} />);
+    const props = makeProps("feature-detail-1");
+    const { getAllByText, getByTestId, getByText, queryByText } = render(<FeatureDetailPage {...props} />);
 
     await waitFor(() => {
       expect(mockedGetFeatureById).toHaveBeenCalledWith("feature-detail-1");
-      expect(getByText("Feature Metadata")).toBeTruthy();
-      expect(getByText("Activity")).toBeTruthy();
-      expect(getByText("Heart / Recovery")).toBeTruthy();
-      expect(getByText("Sleep")).toBeTruthy();
-      expect(getByText("Daily / Context")).toBeTruthy();
-      expect(getByText("Personal / Baseline")).toBeTruthy();
-      expect(getByText("Resting Heart Rate")).toBeTruthy();
-      expect(getByText("Sleep Efficiency")).toBeTruthy();
-      expect(getByText("Weekday Indicator")).toBeTruthy();
-      expect(getByText("fitbit-pipeline")).toBeTruthy();
-      expect(getByText("America/New_York")).toBeTruthy();
+      expect(getAllByText("Activity").length).toBeGreaterThan(0);
       expect(getByText("Mood")).toBeTruthy();
       expect(getAllByText("Calm").length).toBeGreaterThan(0);
       expect(getByText("- Relaxed")).toBeTruthy();
+      expect(getByText("Update Mood Label")).toBeTruthy();
     });
+
+    expect(getByText("Steps Count")).toBeTruthy();
+    expect(queryByText("Sleep Efficiency")).toBeNull();
+
+    fireEvent.press(getByTestId("feature-detail-section-dropdown-toggle"));
+    fireEvent.press(getByTestId("feature-detail-section-option-sleep"));
+    expect(getAllByText("Sleep").length).toBeGreaterThan(0);
+    expect(getByText("Sleep Efficiency")).toBeTruthy();
+
+    fireEvent.press(getByTestId("feature-detail-section-dropdown-toggle"));
+    fireEvent.press(getByTestId("feature-detail-section-option-metadata"));
+    expect(getByText("Feature Metadata")).toBeTruthy();
+    expect(getByText("fitbit-pipeline")).toBeTruthy();
+    expect(getByText("America/New_York")).toBeTruthy();
   });
 
-  it("shows empty label form state for unlabeled features", async () => {
+  it("shows Add Mood Label CTA when feature has no label", async () => {
     mockedGetFeatureById.mockResolvedValue(UNLABELED_FEATURE);
 
-    const { getByText } = render(
-      <FeatureDetailPage {...makeProps("feature-detail-unlabeled")} />
-    );
+    const props = makeProps("feature-detail-unlabeled");
+    const { getByText } = render(<FeatureDetailPage {...props} />);
 
     await waitFor(() => {
       expect(getByText("Mood")).toBeTruthy();
       expect(getByText("Not labeled")).toBeTruthy();
-      expect(getByText("Select a category first.")).toBeTruthy();
+      expect(getByText("Add Mood Label")).toBeTruthy();
     });
   });
 
-  it("selects category/emotion and saves mood label through API", async () => {
-    mockedGetFeatureById.mockResolvedValue(UNLABELED_FEATURE);
-    mockedSetFeatureLabel.mockResolvedValue({
-      category: "stressed",
-      emotion: "Anxious"
+  it("navigates to mood editor screen from the bottom CTA", async () => {
+    mockedGetFeatureById.mockResolvedValue(DETAIL_FEATURE);
+    const props = makeProps("feature-detail-1");
+    const { getByText } = render(<FeatureDetailPage {...props} />);
+
+    await waitFor(() => {
+      expect(getByText("Update Mood Label")).toBeTruthy();
     });
 
-    const { getAllByText, getByTestId, getByText } = render(
-      <FeatureDetailPage {...makeProps("feature-detail-unlabeled")} />
+    fireEvent.press(getByText("Update Mood Label"));
+
+    expect((props.navigation as never as { navigate: jest.Mock }).navigate).toHaveBeenCalledWith(
+      "FeatureMoodLabel",
+      { id: "feature-detail-1" }
     );
-
-    await waitFor(() => {
-      expect(getByText("Add Mood Label")).toBeTruthy();
-    });
-
-    fireEvent.press(getByTestId("mood-category-option-stressed"));
-    fireEvent.press(getByTestId("mood-emotion-option-anxious"));
-    fireEvent.press(getByTestId("mood-save-button"));
-
-    await waitFor(() => {
-      expect(mockedSetFeatureLabel).toHaveBeenCalledWith(
-        "feature-detail-unlabeled",
-        "stressed",
-        "Anxious"
-      );
-      expect(getAllByText("Stressed").length).toBeGreaterThan(0);
-      expect(getByText("- Anxious")).toBeTruthy();
-    });
   });
 
-  it("prevents duplicate save submissions while save is in flight", async () => {
-    let resolveSave: (() => void) | null = null;
-    mockedGetFeatureById.mockResolvedValue(UNLABELED_FEATURE);
-    mockedSetFeatureLabel.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveSave = () => resolve({ category: "calm", emotion: "Calm" });
-        })
-    );
-
-    const { getByTestId, getByText } = render(
-      <FeatureDetailPage {...makeProps("feature-detail-unlabeled")} />
-    );
+  it("renders raw JSON directly when raw section is selected", async () => {
+    mockedGetFeatureById.mockResolvedValue(DETAIL_FEATURE);
+    const props = makeProps("feature-detail-1");
+    const { getByTestId, getByText, queryByText } = render(<FeatureDetailPage {...props} />);
 
     await waitFor(() => {
-      expect(getByText("Add Mood Label")).toBeTruthy();
+      expect(getByTestId("feature-detail-section-dropdown-toggle")).toBeTruthy();
     });
 
-    fireEvent.press(getByTestId("mood-category-option-calm"));
-    fireEvent.press(getByTestId("mood-save-button"));
-    fireEvent.press(getByTestId("mood-save-button"));
-
-    expect(mockedSetFeatureLabel).toHaveBeenCalledTimes(1);
-
-    resolveSave?.();
+    fireEvent.press(getByTestId("feature-detail-section-dropdown-toggle"));
+    fireEvent.press(getByTestId("feature-detail-section-option-raw-json"));
 
     await waitFor(() => {
-      expect(getByText("- Calm")).toBeTruthy();
+      expect(getByText(/"id": "feature-detail-1"/)).toBeTruthy();
     });
-  });
-
-  it("shows API error if saving mood label fails", async () => {
-    mockedGetFeatureById.mockResolvedValue(UNLABELED_FEATURE);
-    mockedSetFeatureLabel.mockRejectedValue(new Error("Unable to save mood label."));
-
-    const { getByTestId, getByText } = render(
-      <FeatureDetailPage {...makeProps("feature-detail-unlabeled")} />
-    );
-
-    await waitFor(() => {
-      expect(getByText("Add Mood Label")).toBeTruthy();
-    });
-
-    fireEvent.press(getByTestId("mood-category-option-tired"));
-    fireEvent.press(getByTestId("mood-save-button"));
-
-    await waitFor(() => {
-      expect(getByText("Unable to save mood label.")).toBeTruthy();
-    });
+    expect(queryByText("Show Raw JSON")).toBeNull();
   });
 
   it("renders a not found state when feature id does not resolve", async () => {
@@ -198,7 +156,8 @@ describe("FeatureDetailPage", () => {
       createApiError({ message: "Feature not found.", status: 404 })
     );
 
-    const { getByText } = render(<FeatureDetailPage {...makeProps("missing-feature")} />);
+    const props = makeProps("missing-feature");
+    const { getByText } = render(<FeatureDetailPage {...props} />);
 
     await waitFor(() => {
       expect(getByText("Feature missing-feature was not found.")).toBeTruthy();
@@ -208,33 +167,13 @@ describe("FeatureDetailPage", () => {
   it("renders error state when feature detail request fails", async () => {
     mockedGetFeatureById.mockRejectedValue(new Error("Failed to load feature detail."));
 
-    const { getByText } = render(<FeatureDetailPage {...makeProps("feature-detail-1")} />);
+    const props = makeProps("feature-detail-1");
+    const { getByText } = render(<FeatureDetailPage {...props} />);
 
     await waitFor(() => {
       expect(getByText("Something went wrong")).toBeTruthy();
       expect(getByText("Failed to load feature detail.")).toBeTruthy();
       expect(getByText("Try Again")).toBeTruthy();
-    });
-  });
-
-  it("toggles raw JSON view", async () => {
-    mockedGetFeatureById.mockResolvedValue(DETAIL_FEATURE);
-
-    const { getByText, queryByText } = render(
-      <FeatureDetailPage {...makeProps("feature-detail-1")} />
-    );
-
-    await waitFor(() => {
-      expect(getByText("Show Raw JSON")).toBeTruthy();
-    });
-
-    expect(queryByText(/"id": "feature-detail-1"/)).toBeNull();
-
-    fireEvent.press(getByText("Show Raw JSON"));
-
-    await waitFor(() => {
-      expect(getByText("Hide Raw JSON")).toBeTruthy();
-      expect(getByText(/"id": "feature-detail-1"/)).toBeTruthy();
     });
   });
 });

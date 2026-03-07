@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { StyleSheet, View } from "react-native";
@@ -15,10 +15,13 @@ import SectionHeader from "../components/ui/SectionHeader";
 import { DEFAULT_REQUEST_POLL_INTERVAL_MS, useRequestPolling } from "../hooks/useRequestPolling";
 import type { RootStackParamList } from "../router/AppRouter";
 import { spacing } from "../theme";
+import type { FeatureRequestRecord } from "../types/requests";
+import type { MoodCategory, MoodLabelValue } from "../types/mood";
 
 export default function RequestsPage() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const isFocused = useIsFocused();
+  const [requestMoodById, setRequestMoodById] = useState<Record<string, MoodLabelValue>>({});
   const {
     cancelErrorById,
     cancelPendingRequest,
@@ -49,13 +52,49 @@ export default function RequestsPage() {
     [cancelPendingRequest]
   );
 
+  const handleRequestCreated = useCallback(
+    async (
+      created: { requestId: string },
+      moodSelection: {
+        category: MoodCategory;
+        emotion: string;
+      }
+    ) => {
+      setRequestMoodById((current) => ({
+        ...current,
+        [created.requestId]: {
+          category: moodSelection.category,
+          emotion: moodSelection.emotion
+        }
+      }));
+      await refresh();
+    },
+    [refresh]
+  );
+
+  const requestsWithMood = useMemo<FeatureRequestRecord[]>(
+    () =>
+      requests.map((request) => {
+        if (request.label) {
+          return request;
+        }
+
+        const mood = requestMoodById[request.id];
+        if (!mood) {
+          return request;
+        }
+
+        return {
+          ...request,
+          label: mood
+        };
+      }),
+    [requestMoodById, requests]
+  );
+
   return (
     <View style={styles.container}>
       <SectionHeader title="Requests" subtitle="Track feature capture requests and queue progress." />
-      <PendingCountCard pendingCount={pendingCount} />
-      {isPolling ? (
-        <InfoText tone="warning">Auto-updating while requests are pending.</InfoText>
-      ) : null}
       <AppButton
         label="Refresh"
         disabled={isInitialLoading || isRefreshing}
@@ -64,25 +103,29 @@ export default function RequestsPage() {
         style={styles.inlineButton}
         variant="neutral"
       />
-      <CreateRequestCard onCreated={refresh} />
+      <CreateRequestCard onCreated={handleRequestCreated} />
+      <PendingCountCard pendingCount={pendingCount} />
+      {isPolling ? (
+        <InfoText tone="warning">Auto-updating while requests are pending.</InfoText>
+      ) : null}
 
       {isInitialLoading ? <LoadingState message="Loading requests..." /> : null}
-      {!isInitialLoading && errorMessage && requests.length === 0 ? (
+      {!isInitialLoading && errorMessage && requestsWithMood.length === 0 ? (
         <View style={styles.errorContainer}>
           <ErrorState message={errorMessage} />
           <AppButton label="Try Again" onPress={refresh} style={styles.inlineButton} variant="neutral" />
         </View>
       ) : null}
-      {!isInitialLoading && !errorMessage && requests.length === 0 ? (
+      {!isInitialLoading && !errorMessage && requestsWithMood.length === 0 ? (
         <EmptyState message="No feature requests yet. Trigger a capture to get started." />
       ) : null}
-      {requests.length > 0 ? (
+      {requestsWithMood.length > 0 ? (
         <RequestList
           cancelErrorById={cancelErrorById}
           cancelingById={cancelingById}
           onPressCancel={handleCancelRequest}
           onPressFeature={handleOpenFeature}
-          requests={requests}
+          requests={requestsWithMood}
         />
       ) : null}
     </View>

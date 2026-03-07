@@ -12,8 +12,13 @@ import AppButton from "../ui/AppButton";
 import AppCard from "../ui/AppCard";
 import InfoText from "../ui/InfoText";
 
+type MoodSelection = {
+  category: MoodCategory;
+  emotion: string;
+};
+
 type CreateRequestCardProps = {
-  onCreated?: (request: CreateFeatureRequestResponse) => Promise<void> | void;
+  onCreated?: (request: CreateFeatureRequestResponse, moodSelection: MoodSelection) => Promise<void> | void;
 };
 
 const DEFAULT_ERROR_MESSAGE = "Unable to create request right now.";
@@ -62,7 +67,10 @@ export default function CreateRequestCard({ onCreated }: CreateRequestCardProps)
       });
       setLatestCreated(created);
       if (onCreated) {
-        await onCreated(created);
+        await onCreated(created, {
+          category: selectedCategory,
+          emotion: selectedEmotion
+        });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE;

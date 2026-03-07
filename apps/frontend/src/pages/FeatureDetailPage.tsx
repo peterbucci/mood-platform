@@ -1,33 +1,44 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { getFeatureById, setFeatureLabel } from "../api/features";
+import { getFeatureById } from "../api/features";
 import { isApiError } from "../api/errors";
 import FeatureMetadataCard from "../components/features/FeatureMetadataCard";
 import FeatureSectionCard from "../components/features/FeatureSectionCard";
 import RawJsonToggle from "../components/features/RawJsonToggle";
-import MoodLabelEditor from "../components/mood/MoodLabelEditor";
 import MoodLabelCard from "../components/mood/MoodLabelCard";
 import EmptyState from "../components/states/EmptyState";
 import ErrorState from "../components/states/ErrorState";
 import LoadingState from "../components/states/LoadingState";
+import AppCard from "../components/ui/AppCard";
 import AppButton from "../components/ui/AppButton";
 import SectionHeader from "../components/ui/SectionHeader";
 import type { RootStackParamList } from "../router/AppRouter";
-import { spacing } from "../theme";
+import { colors, radius, spacing, typography } from "../theme";
 import type { FeatureRecord } from "../types/features";
-import type { MoodCategory } from "../types/mood";
 import { buildFeatureSections, extractFeatureMetadata } from "../utils/featureFormatting";
 
 type FeatureDetailPageProps = NativeStackScreenProps<RootStackParamList, "FeatureDetail">;
 type DetailViewState = "loading" | "ready" | "not_found" | "error";
+type DetailTab = {
+  key: string;
+  label: string;
+  type: "section" | "metadata" | "raw";
+  sectionTitle?: string;
+};
 
-export default function FeatureDetailPage({ route }: FeatureDetailPageProps) {
-  const { id } = route.params;
+function toTabKey(label: string): string {
+  return label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
+
+export default function FeatureDetailPage({ navigation, route }: FeatureDetailPageProps) {
+  const { id, refreshAt } = route.params;
   const [feature, setFeature] = useState<FeatureRecord | null>(null);
   const [viewState, setViewState] = useState<DetailViewState>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [activeTabKey, setActiveTabKey] = useState<string | null>(null);
+  const [isSectionDropdownOpen, setIsSectionDropdownOpen] = useState(false);
 
   const loadFeatureDetail = useCallback(async () => {
     setViewState("loading");
@@ -51,25 +62,61 @@ export default function FeatureDetailPage({ route }: FeatureDetailPageProps) {
 
   useEffect(() => {
     void loadFeatureDetail();
-  }, [loadFeatureDetail]);
+  }, [loadFeatureDetail, refreshAt]);
 
   const metadata = useMemo(() => (feature ? extractFeatureMetadata(feature) : null), [feature]);
   const sections = useMemo(() => (feature ? buildFeatureSections(feature.data) : []), [feature]);
+  const tabs = useMemo<DetailTab[]>(() => {
+    const sectionTabs = sections.map((section) => ({
+      key: toTabKey(section.title),
+      label: section.title,
+      type: "section" as const,
+      sectionTitle: section.title
+    }));
 
-  const handleSaveMoodLabel = useCallback(
-    async (category: MoodCategory, emotion: string) => {
-      const nextLabel = await setFeatureLabel(id, category, emotion);
-      setFeature((current) =>
-        current
-          ? {
-              ...current,
-              label: nextLabel
-            }
-          : current
-      );
-    },
-    [id]
-  );
+    return [
+      ...sectionTabs,
+      { key: "metadata", label: "Metadata", type: "metadata" as const },
+      { key: "raw-json", label: "Raw JSON", type: "raw" as const }
+    ];
+  }, [sections]);
+  const activeTab = useMemo(() => tabs.find((tab) => tab.key === activeTabKey) ?? tabs[0] ?? null, [tabs, activeTabKey]);
+
+  useEffect(() => {
+    if (viewState !== "ready") {
+      return;
+    }
+
+    if (!tabs.length) {
+      setActiveTabKey(null);
+      return;
+    }
+
+    const preferredTabKey = tabs.find((tab) => tab.type === "section")?.key ?? tabs[0].key;
+    const hasActiveTab = activeTabKey ? tabs.some((tab) => tab.key === activeTabKey) : false;
+
+    if (!activeTabKey || !hasActiveTab) {
+      setActiveTabKey(preferredTabKey);
+    }
+  }, [activeTabKey, tabs, viewState]);
+
+  useEffect(() => {
+    setActiveTabKey(null);
+    setIsSectionDropdownOpen(false);
+  }, [id]);
+
+  const handleToggleSectionDropdown = useCallback(() => {
+    setIsSectionDropdownOpen((current) => !current);
+  }, []);
+
+  const handleSelectTab = useCallback((tabKey: string) => {
+    setActiveTabKey(tabKey);
+    setIsSectionDropdownOpen(false);
+  }, []);
+
+  const handleOpenMoodEditor = useCallback(() => {
+    navigation.navigate("FeatureMoodLabel", { id });
+  }, [id, navigation]);
 
   if (viewState === "loading") {
     return <LoadingState message="Loading feature detail..." />;
@@ -105,12 +152,57 @@ export default function FeatureDetailPage({ route }: FeatureDetailPageProps) {
         subtitle={`Readable breakdown for feature snapshot ${id}.`}
       />
       <MoodLabelCard label={feature.label} />
-      <MoodLabelEditor initialLabel={feature.label} onSaveLabel={handleSaveMoodLabel} />
-      <FeatureMetadataCard metadata={metadata} />
-      {sections.map((section) => (
-        <FeatureSectionCard key={section.title} rows={section.rows} title={section.title} />
-      ))}
-      <RawJsonToggle payload={feature} />
+
+      <AppCard tone="subtle">
+        <Text style={styles.tabHeader}>Feature Sections</Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={handleToggleSectionDropdown}
+          style={styles.dropdownToggle}
+          testID="feature-detail-section-dropdown-toggle"
+        >
+          <Text style={styles.dropdownToggleText}>
+            {activeTab ? activeTab.label : "Select a section"}
+          </Text>
+          <Text style={styles.dropdownToggleChevron}>{isSectionDropdownOpen ? "^" : "v"}</Text>
+        </Pressable>
+        {isSectionDropdownOpen ? (
+          <View style={styles.dropdownMenu} testID="feature-detail-section-dropdown-menu">
+            {tabs.map((tab) => {
+              const isActive = activeTab?.key === tab.key;
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  key={tab.key}
+                  onPress={() => handleSelectTab(tab.key)}
+                  style={[styles.dropdownOption, isActive ? styles.dropdownOptionActive : null]}
+                  testID={`feature-detail-section-option-${tab.key}`}
+                >
+                  <Text style={[styles.dropdownOptionText, isActive ? styles.dropdownOptionTextActive : null]}>
+                    {tab.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+      </AppCard>
+
+      {activeTab?.type === "metadata" ? <FeatureMetadataCard metadata={metadata} /> : null}
+      {activeTab?.type === "raw" ? <RawJsonToggle payload={feature} showToggle={false} /> : null}
+      {activeTab?.type === "section" && activeTab.sectionTitle ? (
+        <FeatureSectionCard
+          rows={sections.find((section) => section.title === activeTab.sectionTitle)?.rows ?? []}
+          title={activeTab.label}
+        />
+      ) : null}
+
+      <AppButton
+        label={feature.label ? "Update Mood Label" : "Add Mood Label"}
+        onPress={handleOpenMoodEditor}
+        style={styles.inlineButton}
+        variant="neutral"
+      />
     </View>
   );
 }
@@ -121,5 +213,52 @@ const styles = StyleSheet.create({
   },
   inlineButton: {
     alignSelf: "flex-start"
+  },
+  tabHeader: {
+    ...typography.bodyStrong,
+    color: colors.textSecondary
+  },
+  dropdownToggle: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: colors.neutralBorder,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 42,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs
+  },
+  dropdownToggleText: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary
+  },
+  dropdownToggleChevron: {
+    ...typography.helper,
+    color: colors.textMuted
+  },
+  dropdownMenu: {
+    borderColor: colors.neutralBorder,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    overflow: "hidden"
+  },
+  dropdownOption: {
+    backgroundColor: colors.surface,
+    minHeight: 40,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  dropdownOptionActive: {
+    backgroundColor: colors.infoSurface
+  },
+  dropdownOptionText: {
+    ...typography.helper,
+    color: colors.textPrimary,
+    fontWeight: "700"
+  },
+  dropdownOptionTextActive: {
+    color: colors.primaryStrong
   }
 });

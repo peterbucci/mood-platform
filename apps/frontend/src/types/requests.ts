@@ -1,3 +1,5 @@
+import type { MoodLabelValue } from "./mood";
+
 export type RequestStatus = "pending" | "fulfilled" | "canceled";
 
 export type CreateFeatureRequestInput = {
@@ -11,6 +13,7 @@ export type FeatureRequestRecord = {
   status: RequestStatus;
   featureId: string | null;
   source: string;
+  label?: MoodLabelValue;
 };
 
 export type CreateFeatureRequestResponse = {
