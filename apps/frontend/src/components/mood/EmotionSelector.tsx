@@ -27,7 +27,7 @@ export default function EmotionSelector({
     <View style={styles.container}>
       <Text style={styles.label}>Emotion</Text>
       {!category ? (
-        <Text style={styles.helpText}>Select a category first.</Text>
+        <Text style={styles.helpText}>Choose a category to reveal matching emotions.</Text>
       ) : (
         <View style={styles.options}>
           {options.map((emotion) => {
@@ -59,7 +59,7 @@ const styles = StyleSheet.create({
   },
   label: {
     ...typography.bodyStrong,
-    color: colors.textSecondary
+    color: colors.textPrimary
   },
   helpText: {
     ...typography.helper,
@@ -80,8 +80,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs
   },
   optionSelected: {
-    backgroundColor: colors.calmSurface,
-    borderColor: colors.calmBorder
+    backgroundColor: colors.infoSurface,
+    borderColor: colors.infoBorder
   },
   optionDisabled: {
     opacity: 0.65
@@ -92,6 +92,6 @@ const styles = StyleSheet.create({
     fontWeight: "700"
   },
   optionTextSelected: {
-    color: colors.calmText
+    color: colors.primaryStrong
   }
 });

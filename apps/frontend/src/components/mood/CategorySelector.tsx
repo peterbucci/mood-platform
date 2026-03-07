@@ -48,7 +48,7 @@ const styles = StyleSheet.create({
   },
   label: {
     ...typography.bodyStrong,
-    color: colors.textSecondary
+    color: colors.textPrimary
   },
   options: {
     flexDirection: "row",
@@ -65,8 +65,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs
   },
   optionSelected: {
-    backgroundColor: colors.infoSurface,
-    borderColor: colors.primary
+    backgroundColor: colors.primary,
+    borderColor: colors.primaryStrong
   },
   optionDisabled: {
     opacity: 0.65
@@ -77,6 +77,6 @@ const styles = StyleSheet.create({
     fontWeight: "700"
   },
   optionTextSelected: {
-    color: colors.primaryStrong
+    color: colors.inverseText
   }
 });
