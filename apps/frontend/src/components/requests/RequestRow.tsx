@@ -1,9 +1,13 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { FeatureRequestRecord } from "../../types/requests";
+import CancelRequestButton from "./CancelRequestButton";
 import StatusBadge from "./StatusBadge";
 
 type RequestRowProps = {
+  cancelError?: string;
+  isCanceling?: boolean;
+  onPressCancel?: (requestId: string) => void;
   onPressFeature?: (featureId: string) => void;
   request: FeatureRequestRecord;
 };
@@ -16,8 +20,15 @@ function formatTimestamp(createdAt: number): string {
   return parsed.toLocaleString();
 }
 
-export default function RequestRow({ onPressFeature, request }: RequestRowProps) {
+export default function RequestRow({
+  cancelError,
+  isCanceling = false,
+  onPressCancel,
+  onPressFeature,
+  request
+}: RequestRowProps) {
   const featureId = request.featureId;
+  const isPending = request.status === "pending";
 
   return (
     <View style={styles.row}>
@@ -39,6 +50,14 @@ export default function RequestRow({ onPressFeature, request }: RequestRowProps)
           ) : null}
         </View>
       ) : null}
+      {isPending && onPressCancel ? (
+        <CancelRequestButton
+          disabled={isCanceling}
+          isLoading={isCanceling}
+          onPress={() => onPressCancel(request.id)}
+        />
+      ) : null}
+      {cancelError ? <Text style={styles.cancelError}>{cancelError}</Text> : null}
     </View>
   );
 }
@@ -75,5 +94,10 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 12,
     fontWeight: "700"
+  },
+  cancelError: {
+    color: "#b91c1c",
+    fontSize: 12,
+    fontWeight: "600"
   }
 });
