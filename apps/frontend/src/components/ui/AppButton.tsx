@@ -3,7 +3,7 @@ import type { StyleProp, ViewStyle } from "react-native";
 
 import { colors, radius, spacing, typography } from "../../theme";
 
-type AppButtonVariant = "primary" | "neutral" | "danger";
+type AppButtonVariant = "primary" | "neutral" | "danger" | "outline";
 
 type AppButtonProps = {
   label: string;
@@ -16,6 +16,13 @@ type AppButtonProps = {
 };
 
 function buttonVariantStyle(variant: AppButtonVariant): ViewStyle {
+  if (variant === "outline") {
+    return {
+      backgroundColor: colors.surface,
+      borderColor: colors.borderStrong,
+      borderWidth: 1
+    };
+  }
   if (variant === "neutral") {
     return { backgroundColor: colors.textPrimary };
   }
@@ -23,6 +30,14 @@ function buttonVariantStyle(variant: AppButtonVariant): ViewStyle {
     return { backgroundColor: colors.dangerText };
   }
   return { backgroundColor: colors.primary };
+}
+
+function textColor(variant: AppButtonVariant): string {
+  if (variant === "outline") {
+    return colors.textPrimary;
+  }
+
+  return colors.inverseText;
 }
 
 export default function AppButton({
@@ -43,7 +58,7 @@ export default function AppButton({
       style={[styles.button, buttonVariantStyle(variant), isDisabled ? styles.buttonDisabled : null, style]}
       testID={testID}
     >
-      <Text style={styles.buttonText}>{isLoading ? `${label}...` : label}</Text>
+      <Text style={[styles.buttonText, { color: textColor(variant) }]}>{isLoading ? `${label}...` : label}</Text>
     </Pressable>
   );
 }
@@ -52,6 +67,7 @@ const styles = StyleSheet.create({
   button: {
     alignItems: "center",
     borderRadius: radius.sm,
+    borderWidth: 0,
     justifyContent: "center",
     minHeight: 42,
     paddingHorizontal: spacing.lg,
@@ -62,7 +78,6 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     ...typography.button,
-    color: colors.inverseText,
     textAlign: "center"
   }
 });
