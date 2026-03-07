@@ -33,6 +33,7 @@ export default function CreateRequestCard({ onCreated }: CreateRequestCardProps)
 
   const handleSelectCategory = useCallback((category: MoodCategory) => {
     setSelectedCategory(category);
+    setLatestCreated(null);
     setSelectedEmotion((current) => {
       if (current && isValidEmotionForCategory(category, current)) {
         return current;
@@ -44,6 +45,7 @@ export default function CreateRequestCard({ onCreated }: CreateRequestCardProps)
 
   const handleSelectEmotion = useCallback((emotion: string) => {
     setSelectedEmotion(emotion);
+    setLatestCreated(null);
     setErrorMessage(null);
   }, []);
 
@@ -57,6 +59,7 @@ export default function CreateRequestCard({ onCreated }: CreateRequestCardProps)
     inFlightRef.current = true;
     setIsSubmitting(true);
     setErrorMessage(null);
+    setLatestCreated(null);
 
     try {
       const created = await createFeatureRequest({
@@ -82,39 +85,46 @@ export default function CreateRequestCard({ onCreated }: CreateRequestCardProps)
   }, [onCreated, selectedCategory, selectedEmotion]);
 
   return (
-    <AppCard tone="info" style={styles.card}>
-      <Text style={styles.title}>Log Emotion + Capture Features</Text>
-      <InfoText tone="helper">
-        Choose how you feel right now, then submit a feature capture request. The request is queued
-        immediately.
-      </InfoText>
+    <AppCard style={styles.card}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Capture a New Snapshot</Text>
+        <InfoText tone="helper">Log how you feel and capture a new feature snapshot.</InfoText>
+      </View>
       <CategorySelector
         disabled={isSubmitting}
         onSelectCategory={handleSelectCategory}
         selectedCategory={selectedCategory}
       />
-      <EmotionSelector
-        category={selectedCategory}
-        disabled={isSubmitting || !selectedCategory}
-        onSelectEmotion={handleSelectEmotion}
-        selectedEmotion={selectedEmotion}
-      />
+      {selectedCategory ? (
+        <View style={styles.emotionSection}>
+          <InfoText tone="helper">Pick the emotion that fits best.</InfoText>
+          <EmotionSelector
+            category={selectedCategory}
+            disabled={isSubmitting}
+            onSelectEmotion={handleSelectEmotion}
+            selectedEmotion={selectedEmotion}
+          />
+        </View>
+      ) : (
+        <InfoText tone="muted">Choose a category to see matching emotions.</InfoText>
+      )}
       <AppButton
         disabled={isSubmitting || !selectedCategory || !selectedEmotion}
         isLoading={isSubmitting}
-        label="Log Emotion"
+        label="Capture Snapshot"
         onPress={handleCreate}
+        style={styles.actionButton}
         testID="log-emotion-button"
       />
       {latestCreated ? (
-        <AppCard tone="success">
-          <Text style={styles.successTitle}>Emotion logged and request created</Text>
-          <InfoText tone="success">Request ID: {latestCreated.requestId}</InfoText>
-          <InfoText tone="success">Status: {latestCreated.status}</InfoText>
-          <InfoText tone="success">
-            Mood: {selectedCategory} / {selectedEmotion}
+        <View style={styles.feedbackRow}>
+          <Text style={styles.feedbackTitle}>
+            {latestCreated.status === "pending" ? "Capture in progress" : "Snapshot queued"}
+          </Text>
+          <InfoText tone={latestCreated.status === "pending" ? "warning" : "success"}>
+            Your request was added to the queue.
           </InfoText>
-        </AppCard>
+        </View>
       ) : null}
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
     </AppCard>
@@ -122,16 +132,35 @@ export default function CreateRequestCard({ onCreated }: CreateRequestCardProps)
 }
 
 const styles = StyleSheet.create({
+  actionButton: {
+    alignSelf: "flex-start",
+    minWidth: 168
+  },
   card: {
     gap: spacing.sm
+  },
+  emotionSection: {
+    gap: spacing.xs
+  },
+  feedbackRow: {
+    backgroundColor: colors.warningSurface,
+    borderColor: colors.warningBorder,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: spacing.xxs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  feedbackTitle: {
+    ...typography.bodyStrong,
+    color: colors.warningText
+  },
+  header: {
+    gap: spacing.xxs
   },
   title: {
     ...typography.sectionTitle,
     color: colors.textPrimary
-  },
-  successTitle: {
-    ...typography.bodyStrong,
-    color: colors.successText
   },
   errorText: {
     ...typography.bodyStrong,
