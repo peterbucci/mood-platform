@@ -249,6 +249,7 @@ class FeatureRequestRepository:
 
         try:
             self._session.add(feature)
+            self._session.flush()
             update_result = self._session.execute(
                 sa.update(FeatureRequest)
                 .where(
