@@ -2,7 +2,12 @@ import { useCallback, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { createFeatureRequest } from "../../api/requests";
+import CategorySelector from "../mood/CategorySelector";
+import EmotionSelector from "../mood/EmotionSelector";
 import type { CreateFeatureRequestResponse } from "../../types/requests";
+import type { MoodCategory } from "../../types/mood";
+import { formatMoodCategory } from "../../utils/moodFormatting";
+import { getDefaultEmotionForCategory, isValidEmotionForCategory } from "../../utils/moodTaxonomy";
 
 type CreateRequestCardProps = {
   onCreated?: (request: CreateFeatureRequestResponse) => Promise<void> | void;
@@ -11,13 +16,34 @@ type CreateRequestCardProps = {
 const DEFAULT_ERROR_MESSAGE = "Unable to create request right now.";
 
 export default function CreateRequestCard({ onCreated }: CreateRequestCardProps) {
+  const [selectedCategory, setSelectedCategory] = useState<MoodCategory | null>(null);
+  const [selectedEmotion, setSelectedEmotion] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [latestCreated, setLatestCreated] = useState<CreateFeatureRequestResponse | null>(null);
   const inFlightRef = useRef(false);
 
+  const handleSelectCategory = useCallback((category: MoodCategory) => {
+    setSelectedCategory(category);
+    setSelectedEmotion((current) => {
+      if (current && isValidEmotionForCategory(category, current)) {
+        return current;
+      }
+      return getDefaultEmotionForCategory(category);
+    });
+    setErrorMessage(null);
+  }, []);
+
+  const handleSelectEmotion = useCallback((emotion: string) => {
+    setSelectedEmotion(emotion);
+    setErrorMessage(null);
+  }, []);
+
   const handleCreate = useCallback(async () => {
-    if (inFlightRef.current) {
+    if (inFlightRef.current || !selectedCategory || !selectedEmotion) {
+      if (!selectedCategory || !selectedEmotion) {
+        setErrorMessage("Please select both category and emotion.");
+      }
       return;
     }
     inFlightRef.current = true;
@@ -25,7 +51,12 @@ export default function CreateRequestCard({ onCreated }: CreateRequestCardProps)
     setErrorMessage(null);
 
     try {
-      const created = await createFeatureRequest();
+      const created = await createFeatureRequest({
+        clientFeatures: {
+          moodCategory: selectedCategory,
+          moodEmotion: selectedEmotion
+        }
+      });
       setLatestCreated(created);
       if (onCreated) {
         await onCreated(created);
@@ -37,29 +68,51 @@ export default function CreateRequestCard({ onCreated }: CreateRequestCardProps)
       inFlightRef.current = false;
       setIsSubmitting(false);
     }
-  }, [onCreated]);
+  }, [onCreated, selectedCategory, selectedEmotion]);
 
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>Capture Latest Features</Text>
+      <Text style={styles.title}>Log Emotion + Capture Features</Text>
       <Text style={styles.description}>
-        Submit a new feature capture request. It will enter the pending queue immediately.
+        Choose how you feel right now, then submit a feature capture request. The request is queued
+        immediately.
       </Text>
+      <CategorySelector
+        disabled={isSubmitting}
+        onSelectCategory={handleSelectCategory}
+        selectedCategory={selectedCategory}
+      />
+      <EmotionSelector
+        category={selectedCategory}
+        disabled={isSubmitting || !selectedCategory}
+        onSelectEmotion={handleSelectEmotion}
+        selectedEmotion={selectedEmotion}
+      />
+      <Text style={styles.selectionText}>
+        Selected Category:{" "}
+        {selectedCategory ? formatMoodCategory(selectedCategory) : "Not selected"}
+      </Text>
+      <Text style={styles.selectionText}>Selected Emotion: {selectedEmotion ?? "Not selected"}</Text>
       <Pressable
         accessibilityRole="button"
-        disabled={isSubmitting}
+        disabled={isSubmitting || !selectedCategory || !selectedEmotion}
         onPress={handleCreate}
-        style={[styles.button, isSubmitting ? styles.buttonDisabled : null]}
+        style={[
+          styles.button,
+          isSubmitting || !selectedCategory || !selectedEmotion ? styles.buttonDisabled : null
+        ]}
+        testID="log-emotion-button"
       >
-        <Text style={styles.buttonText}>
-          {isSubmitting ? "Creating request..." : "Request Feature Capture"}
-        </Text>
+        <Text style={styles.buttonText}>{isSubmitting ? "Logging emotion..." : "Log Emotion"}</Text>
       </Pressable>
       {latestCreated ? (
         <View style={styles.successContainer}>
-          <Text style={styles.successTitle}>Request created</Text>
+          <Text style={styles.successTitle}>Emotion logged and request created</Text>
           <Text style={styles.successText}>Request ID: {latestCreated.requestId}</Text>
           <Text style={styles.successText}>Status: {latestCreated.status}</Text>
+          <Text style={styles.successText}>
+            Mood: {selectedCategory} / {selectedEmotion}
+          </Text>
         </View>
       ) : null}
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
@@ -84,6 +137,10 @@ const styles = StyleSheet.create({
   description: {
     color: "#4b5563",
     fontSize: 14
+  },
+  selectionText: {
+    color: "#4b5563",
+    fontSize: 12
   },
   button: {
     backgroundColor: "#2563eb",

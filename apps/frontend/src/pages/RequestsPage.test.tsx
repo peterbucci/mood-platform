@@ -87,6 +87,27 @@ describe("RequestsPage", () => {
     });
   });
 
+  it("logs selected category and emotion when creating a request", async () => {
+    const { getByTestId } = render(<RequestsPage />);
+
+    await waitFor(() => {
+      expect(getByTestId("mood-category-option-calm")).toBeTruthy();
+    });
+
+    fireEvent.press(getByTestId("mood-category-option-calm"));
+    fireEvent.press(getByTestId("mood-emotion-option-relaxed"));
+    fireEvent.press(getByTestId("log-emotion-button"));
+
+    await waitFor(() => {
+      expect(mockedCreateFeatureRequest).toHaveBeenCalledWith({
+        clientFeatures: {
+          moodCategory: "calm",
+          moodEmotion: "Relaxed"
+        }
+      });
+    });
+  });
+
   it("shows empty state when there are no requests", async () => {
     mockedGetRequests.mockResolvedValue([]);
     mockedGetPendingRequestCount.mockResolvedValue(0);
