@@ -21,6 +21,10 @@ export type CreateFeatureRequestResponse = {
   status: RequestStatus;
 };
 
+export type DeleteRequestResponse = {
+  id: string;
+};
+
 export type RequestListResponse = {
   items: FeatureRequestRecord[];
   limit: number;
