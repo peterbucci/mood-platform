@@ -16,16 +16,20 @@ const mockedGetFeatures = jest.mocked(getFeatures);
 const mockedUseIsFocused = jest.mocked(useIsFocused);
 const mockedUseNavigation = jest.mocked(useNavigation);
 
+function toSeconds(value: string): number {
+  return Math.floor(new Date(value).getTime() / 1000);
+}
+
 const FEATURE_A: FeatureRecord = {
-  createdAt: 1_772_800_000,
+  createdAt: toSeconds("2026-03-07T18:00:00Z"),
   data: {
     activity: { steps: 1200 },
     derived: { dayOfWeek: 2 }
   },
-  id: "feature-a",
+  id: "95776547-ffb2-400f-8320-b62d9f42d470",
   label: {
-    category: "calm",
-    emotion: "Relaxed"
+    category: "energized",
+    emotion: "Cheerful"
   },
   source: "fitbit-pipeline",
   summaryMetadata: { quality: "good", completeness: 0.95 },
@@ -33,11 +37,39 @@ const FEATURE_A: FeatureRecord = {
 };
 
 const FEATURE_B: FeatureRecord = {
-  createdAt: 1_772_801_000,
+  createdAt: toSeconds("2026-03-07T12:00:00Z"),
   data: {
     sleep: { total_sleep_minutes: 410 }
   },
-  id: "feature-b",
+  id: "b41cc562-8dab-4b43-9933-fcb2724986f1",
+  label: {
+    category: "calm",
+    emotion: "Relaxed"
+  },
+  source: "fitbit-pipeline",
+  userId: "00000000-0000-0000-0000-000000000001"
+};
+
+const FEATURE_C: FeatureRecord = {
+  createdAt: toSeconds("2026-03-06T15:30:00Z"),
+  data: {
+    readiness: { score: 72 }
+  },
+  id: "0c08a1f8-8ae3-4940-b94d-bf3f0d92f4ac",
+  label: {
+    category: "calm",
+    emotion: "Peaceful"
+  },
+  source: "fitbit-pipeline",
+  userId: "00000000-0000-0000-0000-000000000001"
+};
+
+const FEATURE_D: FeatureRecord = {
+  createdAt: toSeconds("2026-03-04T09:15:00Z"),
+  data: {
+    sleep: { total_sleep_minutes: 390 }
+  },
+  id: "96da332e-0e10-4e4c-a1d1-9872fb84cb18",
   source: "fitbit-pipeline",
   userId: "00000000-0000-0000-0000-000000000001"
 };
@@ -45,23 +77,39 @@ const FEATURE_B: FeatureRecord = {
 describe("FeaturesPage", () => {
   beforeEach(() => {
     jest.resetAllMocks();
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-03-07T20:00:00Z"));
     mockedUseIsFocused.mockReturnValue(true);
     mockedUseNavigation.mockReturnValue({
       navigate: jest.fn()
     } as never);
   });
 
-  it("renders multiple feature records", async () => {
-    mockedGetFeatures.mockResolvedValue([FEATURE_A, FEATURE_B]);
+  afterEach(() => {
+    jest.useRealTimers();
+  });
 
-    const { getByText } = render(<FeaturesPage />);
+  it("renders grouped feature history with compact summaries", async () => {
+    mockedGetFeatures.mockResolvedValue([FEATURE_A, FEATURE_B, FEATURE_C, FEATURE_D]);
+
+    const { getAllByText, getByText } = render(<FeaturesPage />);
 
     await waitFor(() => {
       expect(getByText("Features")).toBeTruthy();
-      expect(getByText("Feature ID: feature-a")).toBeTruthy();
-      expect(getByText("Feature ID: feature-b")).toBeTruthy();
-      expect(getByText("Mood: Calm - Relaxed")).toBeTruthy();
-      expect(getByText("Mood: Not labeled")).toBeTruthy();
+      expect(getByText("Total captures")).toBeTruthy();
+      expect(getByText("Last capture")).toBeTruthy();
+      expect(getByText("Recent category")).toBeTruthy();
+      expect(getByText("Capture history")).toBeTruthy();
+      expect(getByText("Today")).toBeTruthy();
+      expect(getByText("Yesterday")).toBeTruthy();
+      expect(getByText("Cheerful")).toBeTruthy();
+      expect(getByText("Relaxed")).toBeTruthy();
+      expect(getAllByText("Not labeled").length).toBeGreaterThan(0);
+      expect(getAllByText("2h ago").length).toBeGreaterThan(0);
+      expect(getByText("4")).toBeTruthy();
+      expect(getAllByText("Calm").length).toBeGreaterThan(0);
+      expect(getByText(/ID 9577\.\.\.d470/)).toBeTruthy();
+      expect(getAllByText("View details").length).toBeGreaterThan(0);
     });
   });
 
@@ -73,12 +121,12 @@ describe("FeaturesPage", () => {
     const { getByTestId } = render(<FeaturesPage />);
 
     await waitFor(() => {
-      expect(getByTestId("feature-row-feature-a")).toBeTruthy();
+      expect(getByTestId(`feature-history-item-${FEATURE_A.id}`)).toBeTruthy();
     });
 
-    fireEvent.press(getByTestId("feature-row-feature-a"));
+    fireEvent.press(getByTestId(`feature-history-item-${FEATURE_A.id}`));
 
-    expect(navigate).toHaveBeenCalledWith("FeatureDetail", { id: "feature-a" });
+    expect(navigate).toHaveBeenCalledWith("FeatureDetail", { id: FEATURE_A.id });
   });
 
   it("renders empty state when no features exist", async () => {
@@ -87,7 +135,8 @@ describe("FeaturesPage", () => {
     const { getByText } = render(<FeaturesPage />);
 
     await waitFor(() => {
-      expect(getByText("No feature captures yet. Request a capture to build your history.")).toBeTruthy();
+      expect(getByText("No feature captures yet")).toBeTruthy();
+      expect(getByText("Log an emotion to generate your first capture.")).toBeTruthy();
     });
   });
 
@@ -97,9 +146,26 @@ describe("FeaturesPage", () => {
     const { getByText } = render(<FeaturesPage />);
 
     await waitFor(() => {
-      expect(getByText("Something went wrong")).toBeTruthy();
+      expect(getByText("Unable to load feature history")).toBeTruthy();
       expect(getByText("Failed to load feature history.")).toBeTruthy();
       expect(getByText("Try Again")).toBeTruthy();
+    });
+  });
+
+  it("refreshes feature history from the header action", async () => {
+    mockedGetFeatures.mockResolvedValue([FEATURE_A]);
+
+    const { getByTestId } = render(<FeaturesPage />);
+
+    await waitFor(() => {
+      expect(getByTestId("features-refresh-button")).toBeTruthy();
+      expect(mockedGetFeatures).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.press(getByTestId("features-refresh-button"));
+
+    await waitFor(() => {
+      expect(mockedGetFeatures).toHaveBeenCalledTimes(2);
     });
   });
 });
