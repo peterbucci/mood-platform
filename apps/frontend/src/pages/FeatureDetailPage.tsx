@@ -7,6 +7,7 @@ import { isApiError } from "../api/errors";
 import FeatureMetadataCard from "../components/features/FeatureMetadataCard";
 import FeatureSectionCard from "../components/features/FeatureSectionCard";
 import RawJsonToggle from "../components/features/RawJsonToggle";
+import MoodLabelCard from "../components/mood/MoodLabelCard";
 import EmptyState from "../components/states/EmptyState";
 import ErrorState from "../components/states/ErrorState";
 import LoadingState from "../components/states/LoadingState";
@@ -83,6 +84,7 @@ export default function FeatureDetailPage({ route }: FeatureDetailPageProps) {
     <View style={styles.container}>
       <Text style={styles.title}>Feature Detail</Text>
       <Text style={styles.description}>Readable breakdown for feature snapshot {id}.</Text>
+      <MoodLabelCard label={feature.label} />
       <FeatureMetadataCard metadata={metadata} />
       {sections.map((section) => (
         <FeatureSectionCard key={section.title} rows={section.rows} title={section.title} />

@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { getLatestFeature } from "../api/features";
 import FeatureMetadataCard from "../components/dashboard/FeatureMetadataCard";
 import FeatureSectionCard from "../components/dashboard/FeatureSectionCard";
+import MoodLabelCard from "../components/mood/MoodLabelCard";
 import EmptyState from "../components/states/EmptyState";
 import ErrorState from "../components/states/ErrorState";
 import LoadingState from "../components/states/LoadingState";
@@ -315,6 +316,7 @@ export default function DashboardPage() {
       <Text style={styles.description}>
         Latest fulfilled feature snapshot grouped into readable sections.
       </Text>
+      <MoodLabelCard label={latestFeature.label} />
       <Pressable accessibilityRole="button" onPress={loadLatestFeature} style={styles.refreshButton}>
         <Text style={styles.refreshButtonText}>Refresh Snapshot</Text>
       </Pressable>
