@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
+import { AppState, StyleSheet, View } from "react-native";
 import type { AppStateStatus } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 
 import FitbitConnectionCard from "../components/fitbit/FitbitConnectionCard";
 import ErrorState from "../components/states/ErrorState";
 import LoadingState from "../components/states/LoadingState";
+import AppButton from "../components/ui/AppButton";
+import SectionHeader from "../components/ui/SectionHeader";
 import { getFitbitStatus, startFitbitOAuth, unlinkFitbit } from "../api/fitbit";
 import type { FitbitConnectionStatus } from "../types/fitbit";
+import { spacing } from "../theme";
 
 type ScreenState = "loading" | "connected" | "disconnected" | "error";
 
@@ -99,19 +102,16 @@ export default function SettingsScreen() {
   if (screenState === "error") {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Settings</Text>
+        <SectionHeader title="Settings" />
         <ErrorState message={errorMessage} />
-        <Pressable accessibilityRole="button" onPress={loadStatus} style={styles.retryButton}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </Pressable>
+        <AppButton label="Try Again" onPress={loadStatus} style={styles.inlineButton} variant="neutral" />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Settings</Text>
-      <Text style={styles.subtitle}>Fitbit Connection</Text>
+      <SectionHeader title="Settings" subtitle="Fitbit Connection" />
       <FitbitConnectionCard
         isBusy={isActionLoading}
         onConnect={handleConnect}
@@ -125,28 +125,10 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    gap: 10
+    gap: spacing.md
   },
-  title: {
-    color: "#111827",
-    fontSize: 24,
-    fontWeight: "700"
-  },
-  subtitle: {
-    color: "#374151",
-    fontSize: 16,
-    fontWeight: "600"
-  },
-  retryButton: {
+  inlineButton: {
     alignSelf: "flex-start",
-    backgroundColor: "#111827",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  retryButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600"
+    minWidth: 128
   }
 });

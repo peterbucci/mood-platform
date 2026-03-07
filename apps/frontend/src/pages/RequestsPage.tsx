@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
 import CreateRequestCard from "../components/requests/CreateRequestCard";
 import PendingCountCard from "../components/requests/PendingCountCard";
@@ -9,8 +9,12 @@ import RequestList from "../components/requests/RequestList";
 import EmptyState from "../components/states/EmptyState";
 import ErrorState from "../components/states/ErrorState";
 import LoadingState from "../components/states/LoadingState";
+import AppButton from "../components/ui/AppButton";
+import InfoText from "../components/ui/InfoText";
+import SectionHeader from "../components/ui/SectionHeader";
 import { DEFAULT_REQUEST_POLL_INTERVAL_MS, useRequestPolling } from "../hooks/useRequestPolling";
 import type { RootStackParamList } from "../router/AppRouter";
+import { spacing } from "../theme";
 
 export default function RequestsPage() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -47,29 +51,26 @@ export default function RequestsPage() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Requests</Text>
-      <Text style={styles.description}>Track feature capture requests and pending queue state.</Text>
+      <SectionHeader title="Requests" subtitle="Track feature capture requests and queue progress." />
       <PendingCountCard pendingCount={pendingCount} />
       {isPolling ? (
-        <Text style={styles.pollingText}>Auto-refreshing pending requests every few seconds...</Text>
+        <InfoText tone="warning">Auto-updating while requests are pending.</InfoText>
       ) : null}
-      <Pressable
-        accessibilityRole="button"
+      <AppButton
+        label="Refresh"
         disabled={isInitialLoading || isRefreshing}
+        isLoading={isRefreshing}
         onPress={refresh}
-        style={[styles.refreshButton, isInitialLoading || isRefreshing ? styles.buttonDisabled : null]}
-      >
-        <Text style={styles.refreshButtonText}>{isRefreshing ? "Refreshing..." : "Refresh"}</Text>
-      </Pressable>
+        style={styles.inlineButton}
+        variant="neutral"
+      />
       <CreateRequestCard onCreated={refresh} />
 
       {isInitialLoading ? <LoadingState message="Loading requests..." /> : null}
       {!isInitialLoading && errorMessage && requests.length === 0 ? (
         <View style={styles.errorContainer}>
           <ErrorState message={errorMessage} />
-          <Pressable accessibilityRole="button" onPress={refresh} style={styles.retryButton}>
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </Pressable>
+          <AppButton label="Try Again" onPress={refresh} style={styles.inlineButton} variant="neutral" />
         </View>
       ) : null}
       {!isInitialLoading && !errorMessage && requests.length === 0 ? (
@@ -90,50 +91,13 @@ export default function RequestsPage() {
 
 const styles = StyleSheet.create({
   container: {
-    gap: 10
+    gap: spacing.md
   },
-  title: {
-    color: "#111827",
-    fontSize: 24,
-    fontWeight: "700"
-  },
-  description: {
-    color: "#4b5563",
-    fontSize: 16
-  },
-  pollingText: {
-    color: "#92400e",
-    fontSize: 13,
-    fontWeight: "600"
-  },
-  refreshButton: {
+  inlineButton: {
     alignSelf: "flex-start",
-    backgroundColor: "#111827",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  buttonDisabled: {
-    opacity: 0.65
-  },
-  refreshButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600"
+    minWidth: 128
   },
   errorContainer: {
-    gap: 8
-  },
-  retryButton: {
-    alignSelf: "flex-start",
-    backgroundColor: "#111827",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  retryButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600"
+    gap: spacing.sm
   }
 });

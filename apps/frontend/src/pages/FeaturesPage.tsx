@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
 import { getFeatures } from "../api/features";
 import FeatureList from "../components/features/FeatureList";
 import EmptyState from "../components/states/EmptyState";
 import ErrorState from "../components/states/ErrorState";
 import LoadingState from "../components/states/LoadingState";
+import AppButton from "../components/ui/AppButton";
+import SectionHeader from "../components/ui/SectionHeader";
 import type { RootStackParamList } from "../router/AppRouter";
+import { spacing } from "../theme";
 import type { FeatureRecord } from "../types/features";
 
 type FeaturesViewState = "loading" | "ready" | "empty" | "error";
@@ -52,11 +55,9 @@ export default function FeaturesPage() {
   if (viewState === "error") {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Features</Text>
+        <SectionHeader title="Features" />
         <ErrorState message={errorMessage ?? "Failed to load feature history."} />
-        <Pressable accessibilityRole="button" onPress={loadFeatures} style={styles.retryButton}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </Pressable>
+        <AppButton label="Try Again" onPress={loadFeatures} style={styles.inlineButton} variant="neutral" />
       </View>
     );
   }
@@ -64,20 +65,16 @@ export default function FeaturesPage() {
   if (viewState === "empty") {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Features</Text>
-        <Text style={styles.description}>Browse previously generated feature captures.</Text>
-        <EmptyState message="No feature captures yet" />
+        <SectionHeader title="Features" subtitle="Browse previous feature captures." />
+        <EmptyState message="No feature captures yet. Request a capture to build your history." />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Features</Text>
-      <Text style={styles.description}>Browse previously generated feature captures.</Text>
-      <Pressable accessibilityRole="button" onPress={loadFeatures} style={styles.refreshButton}>
-        <Text style={styles.refreshButtonText}>Refresh History</Text>
-      </Pressable>
+      <SectionHeader title="Features" subtitle="Browse previous feature captures." />
+      <AppButton label="Refresh History" onPress={loadFeatures} style={styles.inlineButton} variant="neutral" />
       <FeatureList features={features} onPressFeature={handleOpenFeature} />
     </View>
   );
@@ -86,39 +83,10 @@ export default function FeaturesPage() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    gap: 8
+    gap: spacing.sm
   },
-  title: {
-    color: "#111827",
-    fontSize: 24,
-    fontWeight: "700"
-  },
-  description: {
-    color: "#4b5563",
-    fontSize: 16
-  },
-  refreshButton: {
+  inlineButton: {
     alignSelf: "flex-start",
-    backgroundColor: "#111827",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  refreshButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600"
-  },
-  retryButton: {
-    alignSelf: "flex-start",
-    backgroundColor: "#111827",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  retryButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600"
+    minWidth: 144
   }
 });

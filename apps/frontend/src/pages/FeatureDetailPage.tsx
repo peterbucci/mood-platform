@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
 import { getFeatureById, setFeatureLabel } from "../api/features";
 import { isApiError } from "../api/errors";
@@ -12,7 +12,10 @@ import MoodLabelCard from "../components/mood/MoodLabelCard";
 import EmptyState from "../components/states/EmptyState";
 import ErrorState from "../components/states/ErrorState";
 import LoadingState from "../components/states/LoadingState";
+import AppButton from "../components/ui/AppButton";
+import SectionHeader from "../components/ui/SectionHeader";
 import type { RootStackParamList } from "../router/AppRouter";
+import { spacing } from "../theme";
 import type { FeatureRecord } from "../types/features";
 import type { MoodCategory } from "../types/mood";
 import { buildFeatureSections, extractFeatureMetadata } from "../utils/featureFormatting";
@@ -75,7 +78,7 @@ export default function FeatureDetailPage({ route }: FeatureDetailPageProps) {
   if (viewState === "not_found") {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Feature Detail</Text>
+        <SectionHeader title="Feature Detail" />
         <EmptyState message={`Feature ${id} was not found.`} />
       </View>
     );
@@ -84,11 +87,9 @@ export default function FeatureDetailPage({ route }: FeatureDetailPageProps) {
   if (viewState === "error") {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Feature Detail</Text>
+        <SectionHeader title="Feature Detail" />
         <ErrorState message={errorMessage ?? "Failed to load feature detail."} />
-        <Pressable accessibilityRole="button" onPress={loadFeatureDetail} style={styles.retryButton}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </Pressable>
+        <AppButton label="Try Again" onPress={loadFeatureDetail} style={styles.inlineButton} variant="neutral" />
       </View>
     );
   }
@@ -99,8 +100,10 @@ export default function FeatureDetailPage({ route }: FeatureDetailPageProps) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Feature Detail</Text>
-      <Text style={styles.description}>Readable breakdown for feature snapshot {id}.</Text>
+      <SectionHeader
+        title="Feature Detail"
+        subtitle={`Readable breakdown for feature snapshot ${id}.`}
+      />
       <MoodLabelCard label={feature.label} />
       <MoodLabelEditor initialLabel={feature.label} onSaveLabel={handleSaveMoodLabel} />
       <FeatureMetadataCard metadata={metadata} />
@@ -114,27 +117,9 @@ export default function FeatureDetailPage({ route }: FeatureDetailPageProps) {
 
 const styles = StyleSheet.create({
   container: {
-    gap: 8
+    gap: spacing.sm
   },
-  title: {
-    color: "#111827",
-    fontSize: 24,
-    fontWeight: "700"
-  },
-  description: {
-    color: "#4b5563",
-    fontSize: 16
-  },
-  retryButton: {
-    alignSelf: "flex-start",
-    backgroundColor: "#111827",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  retryButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600"
+  inlineButton: {
+    alignSelf: "flex-start"
   }
 });

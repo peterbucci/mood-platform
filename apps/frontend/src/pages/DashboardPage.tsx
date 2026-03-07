@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
 import { getLatestFeature } from "../api/features";
 import FeatureMetadataCard from "../components/dashboard/FeatureMetadataCard";
@@ -10,7 +10,10 @@ import MoodLabelCard from "../components/mood/MoodLabelCard";
 import EmptyState from "../components/states/EmptyState";
 import ErrorState from "../components/states/ErrorState";
 import LoadingState from "../components/states/LoadingState";
+import AppButton from "../components/ui/AppButton";
+import SectionHeader from "../components/ui/SectionHeader";
 import type { RootStackParamList } from "../router/AppRouter";
+import { spacing } from "../theme";
 import type { FeatureData, FeatureRecord } from "../types/features";
 
 type DashboardViewState = "loading" | "ready" | "empty" | "error";
@@ -288,7 +291,7 @@ export default function DashboardPage() {
   if (viewState === "empty") {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Dashboard</Text>
+        <SectionHeader title="Dashboard" />
         <EmptyState message="No feature data available yet. Request a capture to generate your first snapshot." />
       </View>
     );
@@ -297,11 +300,9 @@ export default function DashboardPage() {
   if (viewState === "error") {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Dashboard</Text>
+        <SectionHeader title="Dashboard" />
         <ErrorState message={errorMessage ?? "Failed to load dashboard data."} />
-        <Pressable accessibilityRole="button" onPress={loadLatestFeature} style={styles.retryButton}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </Pressable>
+        <AppButton label="Try Again" onPress={loadLatestFeature} variant="neutral" style={styles.inlineButton} />
       </View>
     );
   }
@@ -312,14 +313,12 @@ export default function DashboardPage() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Dashboard</Text>
-      <Text style={styles.description}>
-        Latest fulfilled feature snapshot grouped into readable sections.
-      </Text>
+      <SectionHeader
+        title="Dashboard"
+        subtitle="Latest fulfilled feature snapshot grouped into readable sections."
+      />
       <MoodLabelCard label={latestFeature.label} />
-      <Pressable accessibilityRole="button" onPress={loadLatestFeature} style={styles.refreshButton}>
-        <Text style={styles.refreshButtonText}>Refresh Snapshot</Text>
-      </Pressable>
+      <AppButton label="Refresh Snapshot" onPress={loadLatestFeature} variant="neutral" style={styles.inlineButton} />
 
       {sections.map((section) => (
         <FeatureSectionCard key={section.title} rows={section.rows} title={section.title} />
@@ -327,64 +326,20 @@ export default function DashboardPage() {
 
       <FeatureMetadataCard metadata={metadata} />
 
-      <Pressable
-        accessibilityRole="button"
+      <AppButton
+        label="View Full Feature Details"
         onPress={() => navigation.navigate("FeatureDetail", { id: latestFeature.id })}
-        style={styles.detailButton}
-      >
-        <Text style={styles.detailButtonText}>View Full Feature Details</Text>
-      </Pressable>
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    gap: 8
+    gap: spacing.sm
   },
-  title: {
-    color: "#111827",
-    fontSize: 24,
-    fontWeight: "700"
-  },
-  description: {
-    color: "#4b5563",
-    fontSize: 16
-  },
-  refreshButton: {
+  inlineButton: {
     alignSelf: "flex-start",
-    backgroundColor: "#111827",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  refreshButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600"
-  },
-  detailButton: {
-    backgroundColor: "#2563eb",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  detailButtonText: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "700",
-    textAlign: "center"
-  },
-  retryButton: {
-    alignSelf: "flex-start",
-    backgroundColor: "#111827",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10
-  },
-  retryButtonText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600"
+    minWidth: 164
   }
 });
