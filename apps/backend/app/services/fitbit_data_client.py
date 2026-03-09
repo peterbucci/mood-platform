@@ -16,7 +16,9 @@ import httpx
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.repositories.fitbit_token_repository import FitbitTokenRepository
+from app.repositories.integration_settings_repository import IntegrationSettingsRepository
 from app.services.fitbit_api_client import FitbitApiClient
+from app.services.fitbit_integration_settings_service import build_fitbit_runtime_settings
 from app.services.fitbit_token_service import FitbitTokenService
 from app.settings import Settings, get_settings
 
@@ -100,6 +102,14 @@ class FitbitSignalPullClient:
         self._forbidden_cache_seconds = max(60, self._settings.FITBIT_FORBIDDEN_CACHE_SECONDS)
         self._timezone_cache_ttl_seconds = max(60, self._settings.FITBIT_TIMEZONE_CACHE_TTL_SECONDS)
 
+    def _load_runtime_settings(self, *, session: Session) -> Settings:
+        repository = IntegrationSettingsRepository(session=session)
+        stored_settings = repository.get_settings()
+        return build_fitbit_runtime_settings(
+            base_settings=self._settings,
+            integration_settings=stored_settings,
+        )
+
     def fetch_user_data(self, *, user_id: str) -> dict[str, Any]:
         date_iso = datetime.now(tz=UTC).date().isoformat()
         return self.fetch_user_data_for_date(user_id=user_id, date_iso=date_iso)
@@ -120,16 +130,17 @@ class FitbitSignalPullClient:
         range_start_iso = range_start_date.isoformat()
         night_anchor_iso = night_anchor_date.isoformat()
         with self._session_factory() as session:
+            runtime_settings = self._load_runtime_settings(session=session)
             with httpx.Client(timeout=10) as http_client:
                 token_service = FitbitTokenService(
                     repository=FitbitTokenRepository(session=session),
-                    settings=self._settings,
+                    settings=runtime_settings,
                     http_client=http_client,
                 )
                 api_client = FitbitApiClient(
                     token_service=token_service,
                     http_client=http_client,
-                    min_fetch_interval_seconds=self._settings.FITBIT_MIN_FETCH_INTERVAL_SECONDS,
+                    min_fetch_interval_seconds=runtime_settings.FITBIT_MIN_FETCH_INTERVAL_SECONDS,
                 )
 
                 if token_service.is_reauth_required(user_id=user_uuid):
@@ -198,16 +209,17 @@ class FitbitSignalPullClient:
     def _fetch_fitbit_timezone_signal(self, *, user_id: str) -> dict[str, Any]:
         user_uuid = uuid.UUID(user_id)
         with self._session_factory() as session:
+            runtime_settings = self._load_runtime_settings(session=session)
             with httpx.Client(timeout=10) as http_client:
                 token_service = FitbitTokenService(
                     repository=FitbitTokenRepository(session=session),
-                    settings=self._settings,
+                    settings=runtime_settings,
                     http_client=http_client,
                 )
                 api_client = FitbitApiClient(
                     token_service=token_service,
                     http_client=http_client,
-                    min_fetch_interval_seconds=self._settings.FITBIT_MIN_FETCH_INTERVAL_SECONDS,
+                    min_fetch_interval_seconds=runtime_settings.FITBIT_MIN_FETCH_INTERVAL_SECONDS,
                 )
                 if token_service.is_reauth_required(user_id=user_uuid):
                     return _missing_signal(reason="needs_reauth")
@@ -251,16 +263,17 @@ class FitbitSignalPullClient:
     ) -> dict[str, Any]:
         user_uuid = uuid.UUID(user_id)
         with self._session_factory() as session:
+            runtime_settings = self._load_runtime_settings(session=session)
             with httpx.Client(timeout=10) as http_client:
                 token_service = FitbitTokenService(
                     repository=FitbitTokenRepository(session=session),
-                    settings=self._settings,
+                    settings=runtime_settings,
                     http_client=http_client,
                 )
                 api_client = FitbitApiClient(
                     token_service=token_service,
                     http_client=http_client,
-                    min_fetch_interval_seconds=self._settings.FITBIT_MIN_FETCH_INTERVAL_SECONDS,
+                    min_fetch_interval_seconds=runtime_settings.FITBIT_MIN_FETCH_INTERVAL_SECONDS,
                 )
                 if token_service.is_reauth_required(user_id=user_uuid):
                     return _missing_signal(reason="needs_reauth")

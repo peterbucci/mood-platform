@@ -85,13 +85,11 @@ make revision MSG="describe change"
 make db-down
 ```
 
-Fitbit OAuth environment variables are also available in `.env.example`:
+Fitbit integration now uses database-backed configuration from the Settings screen.
 
-- `FITBIT_CLIENT_ID`
-- `FITBIT_CLIENT_SECRET`
-- `FITBIT_REDIRECT_URI`
-- `FITBIT_WEBHOOK_SECRET`
-- `FITBIT_WEBHOOK_COALESCE_SECONDS`
+- Save OAuth credentials and webhook secrets through `Settings -> Fitbit Integration`
+- `FITBIT_WEBHOOK_COALESCE_SECONDS` remains environment-driven
+- legacy Fitbit env vars in `.env.example` are optional and not required for normal runtime operation
 
 Token lifecycle behavior:
 

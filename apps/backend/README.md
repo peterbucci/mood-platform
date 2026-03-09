@@ -128,6 +128,24 @@ The backend supports Fitbit OAuth connect/disconnect endpoints:
 - `GET /fitbit/oauth/status`
 - `POST /fitbit/oauth/unlink`
 
+Fitbit integration settings endpoints:
+
+- `GET /settings/fitbit`
+  - returns the saved Fitbit configuration for the single-owner app
+  - masks stored secrets (`clientSecretMasked`, `webhookSecretMasked`)
+- `PUT /settings/fitbit`
+  - creates or updates the singleton `integration_settings` row
+  - validates `clientId`, `clientSecret`, and `redirectUri`
+  - preserves the existing client secret when the update omits it
+
+Configuration loading flow:
+
+1. The owner saves Fitbit OAuth credentials in the frontend Settings screen.
+2. The backend stores them in the `integration_settings` table.
+3. FastAPI Fitbit dependencies merge that row into runtime Fitbit settings.
+4. OAuth start/callback, token refresh, webhook verification, and worker Fitbit pulls all read the same stored configuration.
+5. If no saved configuration exists, Fitbit OAuth/webhook flows return `Fitbit integration not configured.`
+
 Webhook verification endpoint:
 
 - `GET /fitbit/webhook?verify=<challenge>`
@@ -138,7 +156,7 @@ Webhook ingestion endpoint:
 
 - `POST /fitbit/webhook`
   - verifies `X-Fitbit-Signature` against the raw request body with HMAC-SHA256
-  - requires `FITBIT_WEBHOOK_SECRET`
+  - requires a saved webhook secret in `integration_settings`
   - rejects missing signature with `401`
   - rejects invalid signature with `403`
   - acknowledges quickly with `204` and schedules async debounce processing by user
@@ -166,21 +184,24 @@ Local webhook ingestion test:
      -d '[{"ownerId":"fitbit-user-1","collectionType":"sleep","date":"2026-03-05"}]'
    ```
 
-Required environment variables:
+Managed in the database through `PUT /settings/fitbit`:
 
-- `FITBIT_CLIENT_ID`
-- `FITBIT_CLIENT_SECRET`
-- `FITBIT_REDIRECT_URI`
+- Fitbit client id
+- Fitbit client secret
+- Fitbit redirect URI
+- Fitbit OAuth scope
+- Fitbit subscriber id
+- Fitbit webhook secret
 
-Optional:
+Still environment-driven:
 
 - `FITBIT_AUTH_BASE_URL` (default: `https://www.fitbit.com/oauth2/authorize`)
 - `FITBIT_TOKEN_URL` (default: `https://api.fitbit.com/oauth2/token`)
-- `FITBIT_OAUTH_SCOPE` (default: `sleep heartrate activity profile`)
+- `FITBIT_WEBHOOK_COALESCE_SECONDS`
 
 Local verification:
 
-1. Set Fitbit OAuth env vars.
+1. Save Fitbit OAuth settings through `PUT /settings/fitbit` or the frontend Settings screen.
 2. Start API (`docker compose up --build api` or full stack).
 3. Open docs at `http://localhost:8000/docs`.
 4. Call `/fitbit/oauth/start` and confirm redirect URL includes state and scopes.
@@ -210,10 +231,7 @@ Runtime token usage contract:
 3. `FitbitApiClient.fitbit_fetch(...)` retries once on `401` after refreshing tokens.
 4. Missing token state raises a typed not-connected error (`FitbitTokenNotConnectedError`).
 
-Required OAuth refresh env vars:
-
-- `FITBIT_CLIENT_ID`
-- `FITBIT_CLIENT_SECRET`
+OAuth refresh reads the saved client id and client secret from `integration_settings`.
 
 ## Fitbit Pull Coverage (US-021)
 
@@ -333,7 +351,6 @@ Recommended OAuth scopes for parity:
 
 Additional env vars used by this flow:
 
-- `FITBIT_SUBSCRIBER_ID` for subscription registration header `X-Fitbit-Subscriber-Id`
 - `WEATHER_CACHE_TTL_SECONDS` for weather/air-quality cache TTL (Redis-backed if `REDIS_URL` exists, else in-memory)
 - `FITBIT_MAX_RETRIES` per-signal retries on timeout/429/5xx
 - `FITBIT_BACKOFF_BASE_SECONDS` retry backoff base interval

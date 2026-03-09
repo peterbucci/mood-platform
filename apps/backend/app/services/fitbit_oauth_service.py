@@ -186,10 +186,7 @@ class FitbitOAuthService:
             or not self._settings.FITBIT_CLIENT_SECRET
             or not self._settings.FITBIT_REDIRECT_URI
         ):
-            raise FitbitOAuthConfigurationError(
-                "Fitbit OAuth is not configured. Set FITBIT_CLIENT_ID, "
-                "FITBIT_CLIENT_SECRET, and FITBIT_REDIRECT_URI."
-            )
+            raise FitbitOAuthConfigurationError("Fitbit integration not configured.")
 
     def _register_webhook_subscription(self, *, user_id: uuid.UUID) -> None:
         subscriber_id = self._settings.FITBIT_SUBSCRIBER_ID.strip()

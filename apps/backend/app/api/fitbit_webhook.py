@@ -14,10 +14,10 @@ from fastapi import (
 )
 from fastapi.responses import PlainTextResponse
 
-from app.dependencies import get_fitbit_webhook_ingestion_service
+from app.dependencies import get_fitbit_runtime_settings, get_fitbit_webhook_ingestion_service
 from app.services.fitbit_webhook_ingestion_service import FitbitWebhookIngestionService
 from app.services.fitbit_webhook_signature import FitbitWebhookSignatureVerifier
-from app.settings import get_settings
+from app.settings import Settings
 
 router = APIRouter(prefix="/fitbit", tags=["fitbit-webhook"])
 logger = logging.getLogger(__name__)
@@ -43,6 +43,7 @@ def verify_fitbit_webhook_challenge(
 async def ingest_fitbit_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
+    fitbit_runtime_settings: Annotated[Settings, Depends(get_fitbit_runtime_settings)],
     webhook_ingestion_service: Annotated[
         FitbitWebhookIngestionService,
         Depends(get_fitbit_webhook_ingestion_service),
@@ -72,12 +73,12 @@ async def ingest_fitbit_webhook(
         )
 
     verifier = FitbitWebhookSignatureVerifier(
-        webhook_secret=get_settings().FITBIT_WEBHOOK_SECRET,
+        webhook_secret=fitbit_runtime_settings.FITBIT_WEBHOOK_SECRET,
     )
     if not verifier.is_configured():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Fitbit webhook signing secret is not configured",
+            detail="Fitbit integration not configured.",
         )
 
     if not verifier.verify(raw_body=raw_body, provided_signature=signature):

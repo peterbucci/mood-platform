@@ -12,6 +12,7 @@ from app.repositories.feature_request_repository import FeatureRequestRepository
 from app.repositories.feature_set_repository import FeatureSetRepository
 from app.repositories.fitbit_oauth_repository import FitbitOAuthRepository
 from app.repositories.fitbit_token_repository import FitbitTokenRepository
+from app.repositories.integration_settings_repository import IntegrationSettingsRepository
 from app.repositories.label_repository import LabelRepository
 from app.repositories.mood_entry_repository import MoodEntryRepository
 from app.repositories.postgres import PostgresRepository
@@ -21,6 +22,7 @@ from app.repositories.webhook_job_repository import WebhookJobRepository
 from app.services.feature_request_service import FeatureRequestService
 from app.services.feature_service import FeatureService
 from app.services.fitbit_data_client import build_fitbit_client
+from app.services.fitbit_integration_settings_service import FitbitIntegrationSettingsService
 from app.services.fitbit_oauth_service import FitbitOAuthService
 from app.services.fitbit_token_service import FitbitTokenService
 from app.services.fitbit_webhook_ingestion_service import FitbitWebhookIngestionService
@@ -29,7 +31,7 @@ from app.services.label_service import LabelService
 from app.services.mood_entry_service import MoodEntryService, get_owner_user_id
 from app.services.request_fulfillment_service import RequestFulfillmentService
 from app.services.webhook_coalescer import WebhookCoalescer
-from app.settings import get_settings
+from app.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +100,28 @@ def get_fitbit_token_repository(
     db_session: Annotated[Session, Depends(get_db_session)],
 ) -> FitbitTokenRepository:
     return FitbitTokenRepository(session=db_session)
+
+
+def get_integration_settings_repository(
+    db_session: Annotated[Session, Depends(get_db_session)],
+) -> IntegrationSettingsRepository:
+    return IntegrationSettingsRepository(session=db_session)
+
+
+def get_fitbit_integration_settings_service(
+    integration_settings_repository: Annotated[
+        IntegrationSettingsRepository, Depends(get_integration_settings_repository)
+    ],
+) -> FitbitIntegrationSettingsService:
+    return FitbitIntegrationSettingsService(repository=integration_settings_repository)
+
+
+def get_fitbit_runtime_settings(
+    fitbit_integration_settings_service: Annotated[
+        FitbitIntegrationSettingsService, Depends(get_fitbit_integration_settings_service)
+    ],
+) -> Settings:
+    return fitbit_integration_settings_service.get_runtime_settings(base_settings=get_settings())
 
 
 def get_webhook_job_repository(
@@ -196,21 +220,23 @@ def get_label_service(
 
 def get_fitbit_token_service(
     fitbit_token_repository: Annotated[FitbitTokenRepository, Depends(get_fitbit_token_repository)],
+    fitbit_runtime_settings: Annotated[Settings, Depends(get_fitbit_runtime_settings)],
 ) -> FitbitTokenService:
     return FitbitTokenService(
         repository=fitbit_token_repository,
-        settings=get_settings(),
+        settings=fitbit_runtime_settings,
     )
 
 
 def get_fitbit_oauth_service(
     fitbit_oauth_repository: Annotated[FitbitOAuthRepository, Depends(get_fitbit_oauth_repository)],
     fitbit_token_service: Annotated[FitbitTokenService, Depends(get_fitbit_token_service)],
+    fitbit_runtime_settings: Annotated[Settings, Depends(get_fitbit_runtime_settings)],
 ) -> FitbitOAuthService:
     return FitbitOAuthService(
         state_repository=fitbit_oauth_repository,
         token_service=fitbit_token_service,
-        settings=get_settings(),
+        settings=fitbit_runtime_settings,
     )
 
 

@@ -2,7 +2,13 @@ import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import { Alert, AppState } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 
-import { getFitbitStatus, startFitbitOAuth, unlinkFitbit } from "../api/fitbit";
+import {
+  getFitbitSettings,
+  getFitbitStatus,
+  startFitbitOAuth,
+  unlinkFitbit,
+  updateFitbitSettings
+} from "../api/fitbit";
 import SettingsScreen from "./SettingsScreen";
 
 jest.mock("@react-navigation/native", () => ({
@@ -14,16 +20,31 @@ jest.mock("@react-navigation/native", () => ({
 jest.mock("../api/fitbit");
 
 const mockedGetFitbitStatus = jest.mocked(getFitbitStatus);
+const mockedGetFitbitSettings = jest.mocked(getFitbitSettings);
 const mockedStartFitbitOAuth = jest.mocked(startFitbitOAuth);
 const mockedUnlinkFitbit = jest.mocked(unlinkFitbit);
+const mockedUpdateFitbitSettings = jest.mocked(updateFitbitSettings);
 const mockedUseIsFocused = jest.mocked(useIsFocused);
+
+const DEFAULT_SETTINGS_PAYLOAD = {
+  clientId: "fitbit-client-id",
+  clientSecretMasked: "********1234",
+  redirectUri: "http://localhost:8000/fitbit/oauth/callback",
+  scope: "activity heartrate sleep",
+  subscriberId: "subscriber-1",
+  webhookSecretMasked: "********9876",
+  hasClientSecret: true,
+  hasWebhookSecret: true
+};
 
 describe("SettingsScreen", () => {
   beforeEach(() => {
     jest.resetAllMocks();
     mockedUseIsFocused.mockReturnValue(true);
+    mockedGetFitbitSettings.mockResolvedValue(DEFAULT_SETTINGS_PAYLOAD);
     mockedStartFitbitOAuth.mockResolvedValue();
     mockedUnlinkFitbit.mockResolvedValue({ success: true });
+    mockedUpdateFitbitSettings.mockResolvedValue(DEFAULT_SETTINGS_PAYLOAD);
   });
 
   it("renders connect prompt when disconnected", async () => {
@@ -31,31 +52,35 @@ describe("SettingsScreen", () => {
       connected: false
     });
 
-    const { getByText } = render(<SettingsScreen />);
+    const { getByDisplayValue, getByText } = render(<SettingsScreen />);
 
     await waitFor(() => {
       expect(getByText("Fitbit not connected")).toBeTruthy();
     });
     expect(getByText("Connect Fitbit")).toBeTruthy();
     expect(getByText("Disconnected")).toBeTruthy();
+    expect(getByText("OAuth Configuration")).toBeTruthy();
+    expect(getByDisplayValue("fitbit-client-id")).toBeTruthy();
+    expect(getByDisplayValue("********1234")).toBeTruthy();
   });
 
   it("renders connected state when backend reports connected", async () => {
     mockedGetFitbitStatus.mockResolvedValue({
       connected: true,
-      expiresAt: "2026-03-08T10:00:00Z",
+      expiresAt: "2026-03-12T10:00:00Z",
       fitbitUserId: "fitbit-user-123",
       scopes: ["sleep", "heartrate"]
     });
 
-    const { getByText } = render(<SettingsScreen />);
+    const { getByDisplayValue, getByText } = render(<SettingsScreen />);
 
     await waitFor(() => {
-      expect(getByText("Fitbit connected")).toBeTruthy();
+      expect(getByText("fitbit-user-123")).toBeTruthy();
     });
-    expect(getByText("fitbit-user-123")).toBeTruthy();
+    expect(getByText("Fitbit connected")).toBeTruthy();
     expect(getByText("Permissions")).toBeTruthy();
     expect(getByText("Sleep, Heart Rate")).toBeTruthy();
+    expect(getByDisplayValue("activity heartrate sleep")).toBeTruthy();
   });
 
   it("renders error state on API failure", async () => {
@@ -160,5 +185,73 @@ describe("SettingsScreen", () => {
     });
 
     addEventListenerSpy.mockRestore();
+  });
+
+  it("saves Fitbit configuration changes and shows success feedback", async () => {
+    mockedGetFitbitStatus.mockResolvedValue({ connected: false });
+    mockedUpdateFitbitSettings.mockResolvedValue({
+      ...DEFAULT_SETTINGS_PAYLOAD,
+      clientId: "updated-client-id",
+      redirectUri: "http://localhost:8000/fitbit/oauth/updated-callback",
+      subscriberId: "subscriber-2"
+    });
+
+    const { getByDisplayValue, getByText } = render(<SettingsScreen />);
+
+    await waitFor(() => {
+      expect(getByText("Save Configuration")).toBeTruthy();
+    });
+
+    fireEvent.changeText(getByDisplayValue("fitbit-client-id"), "updated-client-id");
+    fireEvent.changeText(
+      getByDisplayValue("http://localhost:8000/fitbit/oauth/callback"),
+      "http://localhost:8000/fitbit/oauth/updated-callback"
+    );
+    fireEvent.changeText(getByDisplayValue("subscriber-1"), "subscriber-2");
+
+    fireEvent.press(getByText("Save Configuration"));
+
+    await waitFor(() => {
+      expect(mockedUpdateFitbitSettings).toHaveBeenCalledWith({
+        clientId: "updated-client-id",
+        redirectUri: "http://localhost:8000/fitbit/oauth/updated-callback",
+        scope: "activity heartrate sleep",
+        subscriberId: "subscriber-2",
+        clientSecret: undefined,
+        webhookSecret: undefined
+      });
+      expect(getByText("Configuration saved")).toBeTruthy();
+      expect(getByText("Fitbit configuration saved.")).toBeTruthy();
+    });
+  });
+
+  it("shows inline validation before saving incomplete Fitbit configuration", async () => {
+    mockedGetFitbitStatus.mockResolvedValue({ connected: false });
+    mockedGetFitbitSettings.mockResolvedValue({
+      clientId: "",
+      clientSecretMasked: null,
+      redirectUri: "",
+      scope: "activity heartrate sleep",
+      subscriberId: "",
+      webhookSecretMasked: null,
+      hasClientSecret: false,
+      hasWebhookSecret: false
+    });
+
+    const { getByText } = render(<SettingsScreen />);
+
+    await waitFor(() => {
+      expect(getByText("Save Configuration")).toBeTruthy();
+    });
+
+    fireEvent.press(getByText("Save Configuration"));
+
+    await waitFor(() => {
+      expect(getByText("Client ID is required.")).toBeTruthy();
+      expect(getByText("Client Secret is required.")).toBeTruthy();
+      expect(getByText("Redirect URI is required.")).toBeTruthy();
+    });
+
+    expect(mockedUpdateFitbitSettings).not.toHaveBeenCalled();
   });
 });

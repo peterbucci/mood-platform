@@ -23,6 +23,7 @@ OWNER_USER_ID = "00000000-0000-0000-0000-00000000fa01"
 def test_fitbit_oauth_start_redirects_to_fitbit(monkeypatch) -> None:
     with _temporary_database() as database_url:
         _run_alembic_upgrade(database_url=database_url)
+        _seed_fitbit_integration_settings(database_url=database_url)
         _configure_runtime_env(monkeypatch=monkeypatch, database_url=database_url)
 
         with TestClient(app) as client:
@@ -61,9 +62,23 @@ def test_fitbit_oauth_start_redirects_to_fitbit(monkeypatch) -> None:
         db_session._session_factory.cache_clear()
 
 
+def test_fitbit_oauth_start_returns_500_when_not_configured(monkeypatch) -> None:
+    with _temporary_database() as database_url:
+        _run_alembic_upgrade(database_url=database_url)
+        _configure_runtime_env(monkeypatch=monkeypatch, database_url=database_url)
+
+        with TestClient(app) as client:
+            response = client.get("/fitbit/oauth/start", follow_redirects=False)
+
+        assert response.status_code == 500
+        assert response.json() == {"detail": "Fitbit integration not configured."}
+        db_session._session_factory.cache_clear()
+
+
 def test_fitbit_oauth_callback_exchanges_code_and_persists_tokens(monkeypatch) -> None:
     with _temporary_database() as database_url:
         _run_alembic_upgrade(database_url=database_url)
+        _seed_fitbit_integration_settings(database_url=database_url)
         _configure_runtime_env(monkeypatch=monkeypatch, database_url=database_url)
 
         def _mock_request_tokens(self, *, code: str) -> dict[str, object]:
@@ -114,6 +129,7 @@ def test_fitbit_oauth_callback_exchanges_code_and_persists_tokens(monkeypatch) -
 def test_fitbit_oauth_status_reports_connection_state(monkeypatch) -> None:
     with _temporary_database() as database_url:
         _run_alembic_upgrade(database_url=database_url)
+        _seed_fitbit_integration_settings(database_url=database_url)
         _configure_runtime_env(monkeypatch=monkeypatch, database_url=database_url)
 
         def _mock_request_tokens(self, *, code: str) -> dict[str, object]:
@@ -164,6 +180,7 @@ def test_fitbit_oauth_status_reports_connection_state(monkeypatch) -> None:
 def test_fitbit_oauth_unlink_clears_connection(monkeypatch) -> None:
     with _temporary_database() as database_url:
         _run_alembic_upgrade(database_url=database_url)
+        _seed_fitbit_integration_settings(database_url=database_url)
         _configure_runtime_env(monkeypatch=monkeypatch, database_url=database_url)
 
         def _mock_request_tokens(self, *, code: str) -> dict[str, object]:
@@ -277,7 +294,34 @@ def _run_alembic_upgrade(*, database_url: str) -> None:
 def _configure_runtime_env(*, monkeypatch, database_url: str) -> None:
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("OWNER_USER_ID", OWNER_USER_ID)
-    monkeypatch.setenv("FITBIT_CLIENT_ID", "test-fitbit-client-id")
-    monkeypatch.setenv("FITBIT_CLIENT_SECRET", "test-fitbit-client-secret")
-    monkeypatch.setenv("FITBIT_REDIRECT_URI", "http://localhost:8000/fitbit/oauth/callback")
     db_session._session_factory.cache_clear()
+
+
+def _seed_fitbit_integration_settings(*, database_url: str) -> None:
+    with psycopg.connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO integration_settings (
+                    id,
+                    fitbit_client_id,
+                    fitbit_client_secret,
+                    fitbit_redirect_uri,
+                    fitbit_oauth_scope
+                )
+                VALUES (1, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE
+                SET fitbit_client_id = EXCLUDED.fitbit_client_id,
+                    fitbit_client_secret = EXCLUDED.fitbit_client_secret,
+                    fitbit_redirect_uri = EXCLUDED.fitbit_redirect_uri,
+                    fitbit_oauth_scope = EXCLUDED.fitbit_oauth_scope,
+                    updated_at = now()
+                """,
+                (
+                    "test-fitbit-client-id",
+                    "test-fitbit-client-secret",
+                    "http://localhost:8000/fitbit/oauth/callback",
+                    "sleep heartrate activity profile",
+                ),
+            )
+        connection.commit()
