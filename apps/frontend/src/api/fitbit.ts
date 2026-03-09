@@ -1,7 +1,12 @@
 import { Linking } from "react-native";
 
-import type { FitbitConnectionStatus, FitbitUnlinkResponse } from "../types/fitbit";
-import { apiGet, apiPost, buildApiUrl } from "./client";
+import type {
+  FitbitConnectionStatus,
+  FitbitSettingsResponse,
+  FitbitSettingsUpdatePayload,
+  FitbitUnlinkResponse
+} from "../types/fitbit";
+import { apiGet, apiPost, apiPut, buildApiUrl } from "./client";
 import { createApiError, normalizeApiError } from "./errors";
 
 export async function getFitbitStatus(): Promise<FitbitConnectionStatus> {
@@ -42,4 +47,54 @@ export async function unlinkFitbit(): Promise<FitbitUnlinkResponse> {
     throw createApiError({ message: "Invalid Fitbit unlink response." });
   }
   return { success: payload.success };
+}
+
+export async function getFitbitSettings(): Promise<FitbitSettingsResponse> {
+  const payload = await apiGet<Partial<FitbitSettingsResponse>>("/settings/fitbit");
+  if (
+    !payload ||
+    typeof payload.clientId !== "string" ||
+    typeof payload.redirectUri !== "string" ||
+    typeof payload.scope !== "string" ||
+    typeof payload.subscriberId !== "string"
+  ) {
+    throw createApiError({ message: "Invalid Fitbit settings payload." });
+  }
+
+  return {
+    clientId: payload.clientId,
+    clientSecretMasked: payload.clientSecretMasked ?? null,
+    redirectUri: payload.redirectUri,
+    scope: payload.scope,
+    subscriberId: payload.subscriberId,
+    webhookSecretMasked: payload.webhookSecretMasked ?? null,
+    hasClientSecret: Boolean(payload.hasClientSecret),
+    hasWebhookSecret: Boolean(payload.hasWebhookSecret)
+  };
+}
+
+export async function updateFitbitSettings(
+  payload: FitbitSettingsUpdatePayload
+): Promise<FitbitSettingsResponse> {
+  const response = await apiPut<Partial<FitbitSettingsResponse>>("/settings/fitbit", payload);
+  if (
+    !response ||
+    typeof response.clientId !== "string" ||
+    typeof response.redirectUri !== "string" ||
+    typeof response.scope !== "string" ||
+    typeof response.subscriberId !== "string"
+  ) {
+    throw createApiError({ message: "Invalid Fitbit settings save response." });
+  }
+
+  return {
+    clientId: response.clientId,
+    clientSecretMasked: response.clientSecretMasked ?? null,
+    redirectUri: response.redirectUri,
+    scope: response.scope,
+    subscriberId: response.subscriberId,
+    webhookSecretMasked: response.webhookSecretMasked ?? null,
+    hasClientSecret: Boolean(response.hasClientSecret),
+    hasWebhookSecret: Boolean(response.hasWebhookSecret)
+  };
 }

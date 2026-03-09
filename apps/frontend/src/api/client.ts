@@ -59,7 +59,7 @@ async function parseResponseBody(response: Response, mode: ApiParseMode): Promis
 
 type InternalRequestOptions = ApiRequestOptions & {
   body?: unknown;
-  method: "GET" | "POST" | "DELETE" | "PATCH";
+  method: "GET" | "POST" | "DELETE" | "PATCH" | "PUT";
   path: string;
 };
 
@@ -156,6 +156,21 @@ export async function apiPatch<T>(
     ...options,
     body,
     method: "PATCH",
+    path
+  });
+
+  return response as T;
+}
+
+export async function apiPut<T>(
+  path: string,
+  body?: unknown,
+  options?: Omit<ApiRequestOptions, "method">
+): Promise<T> {
+  const response = await apiRequest<T>({
+    ...options,
+    body,
+    method: "PUT",
     path
   });
 

@@ -77,4 +77,78 @@ describe("fitbit api module", () => {
       expect.objectContaining({ method: "POST" })
     );
   });
+
+  it("fetches Fitbit integration settings from the expected endpoint", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getFitbitSettings } = require("./fitbit");
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      createMockResponse({
+        body: {
+          clientId: "fitbit-client-id",
+          clientSecretMasked: "********1234",
+          redirectUri: "http://localhost:8000/fitbit/oauth/callback",
+          scope: "activity sleep",
+          subscriberId: "subscriber-1",
+          webhookSecretMasked: "********9876",
+          hasClientSecret: true,
+          hasWebhookSecret: true
+        },
+        status: 200
+      })
+    );
+
+    const settings = await getFitbitSettings();
+
+    expect(settings.clientId).toBe("fitbit-client-id");
+    expect(settings.clientSecretMasked).toBe("********1234");
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://api.example.test/settings/fitbit",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  it("updates Fitbit integration settings using PUT /settings/fitbit", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { updateFitbitSettings } = require("./fitbit");
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      createMockResponse({
+        body: {
+          clientId: "fitbit-client-id",
+          clientSecretMasked: "********1234",
+          redirectUri: "http://localhost:8000/fitbit/oauth/callback",
+          scope: "activity sleep",
+          subscriberId: "subscriber-1",
+          webhookSecretMasked: "********9876",
+          hasClientSecret: true,
+          hasWebhookSecret: true
+        },
+        status: 200
+      })
+    );
+
+    const payload = await updateFitbitSettings({
+      clientId: "fitbit-client-id",
+      clientSecret: "new-secret",
+      redirectUri: "http://localhost:8000/fitbit/oauth/callback",
+      scope: "activity sleep",
+      subscriberId: "subscriber-1",
+      webhookSecret: "webhook-secret"
+    });
+
+    expect(payload.clientId).toBe("fitbit-client-id");
+    expect(global.fetch).toHaveBeenCalledWith(
+      "http://api.example.test/settings/fitbit",
+      expect.objectContaining({
+        body: JSON.stringify({
+          clientId: "fitbit-client-id",
+          clientSecret: "new-secret",
+          redirectUri: "http://localhost:8000/fitbit/oauth/callback",
+          scope: "activity sleep",
+          subscriberId: "subscriber-1",
+          webhookSecret: "webhook-secret"
+        }),
+        method: "PUT"
+      })
+    );
+  });
 });
