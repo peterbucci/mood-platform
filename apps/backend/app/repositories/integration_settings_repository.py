@@ -34,11 +34,11 @@ class IntegrationSettingsRepository:
         self,
         *,
         client_id: str,
-        client_secret: str,
+        client_secret_encrypted: str,
         redirect_uri: str,
         scope: str | None,
         subscriber_id: str | None,
-        webhook_secret: str | None,
+        webhook_secret_encrypted: str | None,
     ) -> IntegrationSettings:
         try:
             self._session.execute(
@@ -46,21 +46,21 @@ class IntegrationSettingsRepository:
                 .values(
                     id=SINGLETON_SETTINGS_ID,
                     fitbit_client_id=client_id,
-                    fitbit_client_secret=client_secret,
+                    fitbit_client_secret_encrypted=client_secret_encrypted,
                     fitbit_redirect_uri=redirect_uri,
                     fitbit_oauth_scope=scope,
                     fitbit_subscriber_id=subscriber_id,
-                    fitbit_webhook_secret=webhook_secret,
+                    fitbit_webhook_secret_encrypted=webhook_secret_encrypted,
                 )
                 .on_conflict_do_update(
                     index_elements=[IntegrationSettings.id],
                     set_={
                         "fitbit_client_id": client_id,
-                        "fitbit_client_secret": client_secret,
+                        "fitbit_client_secret_encrypted": client_secret_encrypted,
                         "fitbit_redirect_uri": redirect_uri,
                         "fitbit_oauth_scope": scope,
                         "fitbit_subscriber_id": subscriber_id,
-                        "fitbit_webhook_secret": webhook_secret,
+                        "fitbit_webhook_secret_encrypted": webhook_secret_encrypted,
                         "updated_at": sa.func.now(),
                     },
                 )

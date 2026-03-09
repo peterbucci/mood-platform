@@ -7,6 +7,12 @@ from app.repositories.integration_settings_repository import (
     IntegrationSettingsRepository,
     IntegrationSettingsRepositoryError,
 )
+from app.services.encryption_service import (
+    EncryptionServiceConfigurationError,
+    EncryptionServiceDecryptError,
+    build_encryption_service,
+    mask_secret,
+)
 from app.settings import DEFAULT_FITBIT_OAUTH_SCOPE, Settings
 
 
@@ -38,46 +44,33 @@ def _normalize_text(value: str | None) -> str:
     return value.strip()
 
 
-def mask_secret(value: str | None) -> str | None:
-    normalized = _normalize_text(value)
-    if not normalized:
-        return None
-    if len(normalized) <= 4:
-        return "*" * len(normalized)
-    return f"********{normalized[-4:]}"
-
-
-def build_fitbit_runtime_settings(
-    *,
-    base_settings: Settings,
-    integration_settings: IntegrationSettings | None,
-) -> Settings:
-    if integration_settings is None:
-        return replace(
-            base_settings,
-            FITBIT_CLIENT_ID="",
-            FITBIT_CLIENT_SECRET="",
-            FITBIT_REDIRECT_URI="",
-            FITBIT_OAUTH_SCOPE=DEFAULT_FITBIT_OAUTH_SCOPE,
-            FITBIT_SUBSCRIBER_ID="",
-            FITBIT_WEBHOOK_SECRET="",
-        )
-
-    normalized_scope = _normalize_text(integration_settings.fitbit_oauth_scope)
-    return replace(
-        base_settings,
-        FITBIT_CLIENT_ID=_normalize_text(integration_settings.fitbit_client_id),
-        FITBIT_CLIENT_SECRET=_normalize_text(integration_settings.fitbit_client_secret),
-        FITBIT_REDIRECT_URI=_normalize_text(integration_settings.fitbit_redirect_uri),
-        FITBIT_OAUTH_SCOPE=normalized_scope or DEFAULT_FITBIT_OAUTH_SCOPE,
-        FITBIT_SUBSCRIBER_ID=_normalize_text(integration_settings.fitbit_subscriber_id),
-        FITBIT_WEBHOOK_SECRET=_normalize_text(integration_settings.fitbit_webhook_secret),
-    )
-
-
 class FitbitIntegrationSettingsService:
-    def __init__(self, repository: IntegrationSettingsRepository) -> None:
+    def __init__(
+        self,
+        repository: IntegrationSettingsRepository,
+        *,
+        encryption_key: str,
+    ) -> None:
         self._repository = repository
+        self._encryption_key = encryption_key
+
+    def _get_encryption_service(self):
+        try:
+            return build_encryption_service(self._encryption_key)
+        except EncryptionServiceConfigurationError as exc:
+            raise FitbitIntegrationSettingsServiceError(str(exc)) from exc
+
+    def _decrypt_secret(self, encrypted_value: str | None) -> str:
+        normalized_value = _normalize_text(encrypted_value)
+        if not normalized_value:
+            return ""
+
+        try:
+            return self._get_encryption_service().decrypt_value(normalized_value)
+        except EncryptionServiceDecryptError as exc:
+            raise FitbitIntegrationSettingsServiceError(
+                "Failed to decrypt Fitbit integration settings."
+            ) from exc
 
     def get_settings_view(self) -> FitbitIntegrationSettingsView:
         try:
@@ -95,9 +88,30 @@ class FitbitIntegrationSettingsService:
             raise FitbitIntegrationSettingsServiceError(
                 "Failed to load Fitbit integration settings."
             ) from exc
-        return build_fitbit_runtime_settings(
-            base_settings=base_settings,
-            integration_settings=stored_settings,
+        if stored_settings is None:
+            return replace(
+                base_settings,
+                FITBIT_CLIENT_ID="",
+                FITBIT_CLIENT_SECRET="",
+                FITBIT_REDIRECT_URI="",
+                FITBIT_OAUTH_SCOPE=DEFAULT_FITBIT_OAUTH_SCOPE,
+                FITBIT_SUBSCRIBER_ID="",
+                FITBIT_WEBHOOK_SECRET="",
+            )
+
+        normalized_scope = _normalize_text(stored_settings.fitbit_oauth_scope)
+        return replace(
+            base_settings,
+            FITBIT_CLIENT_ID=_normalize_text(stored_settings.fitbit_client_id),
+            FITBIT_CLIENT_SECRET=self._decrypt_secret(
+                stored_settings.fitbit_client_secret_encrypted
+            ),
+            FITBIT_REDIRECT_URI=_normalize_text(stored_settings.fitbit_redirect_uri),
+            FITBIT_OAUTH_SCOPE=normalized_scope or DEFAULT_FITBIT_OAUTH_SCOPE,
+            FITBIT_SUBSCRIBER_ID=_normalize_text(stored_settings.fitbit_subscriber_id),
+            FITBIT_WEBHOOK_SECRET=self._decrypt_secret(
+                stored_settings.fitbit_webhook_secret_encrypted
+            ),
         )
 
     def upsert_settings(
@@ -125,9 +139,15 @@ class FitbitIntegrationSettingsService:
         normalized_webhook_secret = (
             None if webhook_secret is None else _normalize_text(webhook_secret)
         )
-
-        current_client_secret = _normalize_text(
-            stored_settings.fitbit_client_secret if stored_settings is not None else None
+        current_client_secret_encrypted = (
+            _normalize_text(stored_settings.fitbit_client_secret_encrypted)
+            if stored_settings is not None
+            else ""
+        )
+        current_webhook_secret_encrypted = (
+            _normalize_text(stored_settings.fitbit_webhook_secret_encrypted)
+            if stored_settings is not None
+            else ""
         )
 
         errors: dict[str, str] = {}
@@ -136,32 +156,34 @@ class FitbitIntegrationSettingsService:
         if not normalized_redirect_uri:
             errors["redirectUri"] = "Redirect URI is required."
 
-        if normalized_client_secret is None:
-            secret_to_store = current_client_secret
+        if normalized_client_secret:
+            client_secret_encrypted = self._get_encryption_service().encrypt_value(
+                normalized_client_secret
+            )
         else:
-            secret_to_store = normalized_client_secret
+            client_secret_encrypted = current_client_secret_encrypted
 
-        if not secret_to_store:
+        if not client_secret_encrypted:
             errors["clientSecret"] = "Client Secret is required."
 
         if errors:
             raise FitbitIntegrationSettingsValidationError(errors)
 
-        if normalized_webhook_secret is None:
-            webhook_secret_to_store = _normalize_text(
-                stored_settings.fitbit_webhook_secret if stored_settings is not None else None
+        if normalized_webhook_secret:
+            webhook_secret_encrypted = self._get_encryption_service().encrypt_value(
+                normalized_webhook_secret
             )
         else:
-            webhook_secret_to_store = normalized_webhook_secret
+            webhook_secret_encrypted = current_webhook_secret_encrypted or None
 
         try:
             updated_settings = self._repository.upsert_fitbit_settings(
                 client_id=normalized_client_id,
-                client_secret=secret_to_store,
+                client_secret_encrypted=client_secret_encrypted,
                 redirect_uri=normalized_redirect_uri,
                 scope=normalized_scope or None,
                 subscriber_id=normalized_subscriber_id or None,
-                webhook_secret=webhook_secret_to_store or None,
+                webhook_secret_encrypted=webhook_secret_encrypted,
             )
         except IntegrationSettingsRepositoryError as exc:
             raise FitbitIntegrationSettingsServiceError(
@@ -185,8 +207,12 @@ class FitbitIntegrationSettingsService:
                 has_webhook_secret=False,
             )
 
-        normalized_client_secret = _normalize_text(stored_settings.fitbit_client_secret)
-        normalized_webhook_secret = _normalize_text(stored_settings.fitbit_webhook_secret)
+        normalized_client_secret = self._decrypt_secret(
+            stored_settings.fitbit_client_secret_encrypted
+        )
+        normalized_webhook_secret = self._decrypt_secret(
+            stored_settings.fitbit_webhook_secret_encrypted
+        )
         normalized_scope = _normalize_text(stored_settings.fitbit_oauth_scope)
 
         return FitbitIntegrationSettingsView(

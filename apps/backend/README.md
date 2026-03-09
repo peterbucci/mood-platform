@@ -137,14 +137,23 @@ Fitbit integration settings endpoints:
   - creates or updates the singleton `integration_settings` row
   - validates `clientId`, `clientSecret`, and `redirectUri`
   - preserves the existing client secret when the update omits it
+  - encrypts secret values before writing them to the database
 
 Configuration loading flow:
 
 1. The owner saves Fitbit OAuth credentials in the frontend Settings screen.
-2. The backend stores them in the `integration_settings` table.
-3. FastAPI Fitbit dependencies merge that row into runtime Fitbit settings.
-4. OAuth start/callback, token refresh, webhook verification, and worker Fitbit pulls all read the same stored configuration.
-5. If no saved configuration exists, Fitbit OAuth/webhook flows return `Fitbit integration not configured.`
+2. The backend encrypts `clientSecret` and `webhookSecret` with `APP_SECRET_ENCRYPTION_KEY`.
+3. Ciphertext is stored in the `integration_settings` table; plaintext is discarded.
+4. FastAPI Fitbit dependencies decrypt those values only when building runtime Fitbit settings.
+5. OAuth start/callback, token refresh, webhook verification, and worker Fitbit pulls all read the same stored configuration.
+6. If no saved configuration exists, Fitbit OAuth/webhook flows return `Fitbit integration not configured.`
+
+Required secret-management environment variable:
+
+- `APP_SECRET_ENCRYPTION_KEY`
+  - must be a valid Fernet key
+  - used to encrypt/decrypt stored Fitbit secrets
+  - must not be stored in the database
 
 Webhook verification endpoint:
 
@@ -166,9 +175,10 @@ Webhook ingestion endpoint:
 Local webhook ingestion test:
 
 1. Set env vars:
-   - `FITBIT_WEBHOOK_SECRET`
+   - `APP_SECRET_ENCRYPTION_KEY`
    - `FITBIT_WEBHOOK_COALESCE_SECONDS` (optional; default `10`)
-2. Generate test payload + signature (Python one-liner):
+2. Save a webhook secret through `PUT /settings/fitbit` or the frontend Settings screen.
+3. Generate test payload + signature (Python one-liner):
    ```bash
    python - <<'PY'
    import hashlib, hmac
@@ -176,7 +186,7 @@ Local webhook ingestion test:
    print(hmac.new(b"replace-with-fitbit-webhook-secret", body, hashlib.sha256).hexdigest())
    PY
    ```
-3. Send request:
+4. Send request:
    ```bash
    curl -i -X POST http://localhost:8000/fitbit/webhook \
      -H "Content-Type: application/json" \
@@ -195,6 +205,7 @@ Managed in the database through `PUT /settings/fitbit`:
 
 Still environment-driven:
 
+- `APP_SECRET_ENCRYPTION_KEY`
 - `FITBIT_AUTH_BASE_URL` (default: `https://www.fitbit.com/oauth2/authorize`)
 - `FITBIT_TOKEN_URL` (default: `https://api.fitbit.com/oauth2/token`)
 - `FITBIT_WEBHOOK_COALESCE_SECONDS`

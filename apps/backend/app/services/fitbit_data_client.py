@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.repositories.fitbit_token_repository import FitbitTokenRepository
 from app.repositories.integration_settings_repository import IntegrationSettingsRepository
 from app.services.fitbit_api_client import FitbitApiClient
-from app.services.fitbit_integration_settings_service import build_fitbit_runtime_settings
+from app.services.fitbit_integration_settings_service import FitbitIntegrationSettingsService
 from app.services.fitbit_token_service import FitbitTokenService
 from app.settings import Settings, get_settings
 
@@ -103,12 +103,11 @@ class FitbitSignalPullClient:
         self._timezone_cache_ttl_seconds = max(60, self._settings.FITBIT_TIMEZONE_CACHE_TTL_SECONDS)
 
     def _load_runtime_settings(self, *, session: Session) -> Settings:
-        repository = IntegrationSettingsRepository(session=session)
-        stored_settings = repository.get_settings()
-        return build_fitbit_runtime_settings(
-            base_settings=self._settings,
-            integration_settings=stored_settings,
+        service = FitbitIntegrationSettingsService(
+            repository=IntegrationSettingsRepository(session=session),
+            encryption_key=self._settings.APP_SECRET_ENCRYPTION_KEY,
         )
+        return service.get_runtime_settings(base_settings=self._settings)
 
     def fetch_user_data(self, *, user_id: str) -> dict[str, Any]:
         date_iso = datetime.now(tz=UTC).date().isoformat()

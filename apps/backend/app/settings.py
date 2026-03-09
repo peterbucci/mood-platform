@@ -24,6 +24,7 @@ DEFAULT_FITBIT_TIMEZONE_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
 @dataclass(frozen=True)
 class Settings:
     FEATURE_EXTRACTOR_VERSION: str = DEFAULT_FEATURE_EXTRACTOR_VERSION
+    APP_SECRET_ENCRYPTION_KEY: str = ""
     FITBIT_CLIENT_ID: str = ""
     FITBIT_CLIENT_SECRET: str = ""
     FITBIT_REDIRECT_URI: str = ""
@@ -159,6 +160,7 @@ def get_settings() -> Settings:
 
     return Settings(
         FEATURE_EXTRACTOR_VERSION=configured_version,
+        APP_SECRET_ENCRYPTION_KEY=os.getenv("APP_SECRET_ENCRYPTION_KEY", "").strip(),
         FITBIT_CLIENT_ID=os.getenv("FITBIT_CLIENT_ID", "").strip(),
         FITBIT_CLIENT_SECRET=os.getenv("FITBIT_CLIENT_SECRET", "").strip(),
         FITBIT_REDIRECT_URI=os.getenv("FITBIT_REDIRECT_URI", "").strip(),

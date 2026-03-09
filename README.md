@@ -88,6 +88,7 @@ make db-down
 Fitbit integration now uses database-backed configuration from the Settings screen.
 
 - Save OAuth credentials and webhook secrets through `Settings -> Fitbit Integration`
+- `APP_SECRET_ENCRYPTION_KEY` is required so the backend can encrypt stored client/webhook secrets at rest
 - `FITBIT_WEBHOOK_COALESCE_SECONDS` remains environment-driven
 - legacy Fitbit env vars in `.env.example` are optional and not required for normal runtime operation
 
