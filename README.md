@@ -1,125 +1,109 @@
-# mood-platform
+# Mood Platform
 
-Single-owner, self-hostable mood platform monorepo.
+Mood Platform is a self-hostable mobile app for tracking emotional check-ins and pairing them with Fitbit-derived daily signals. The project combines an Expo mobile client, a FastAPI backend, a PostgreSQL data model, and a fulfillment worker so mood capture, snapshot generation, and Fitbit sync all work together as one product.
 
-## Repository Structure
+## What The Product Does
+
+- Turns quick mood check-ins into a readable daily dashboard.
+- Captures snapshot requests and turns them into feature records backed by Fitbit data.
+- Lets users review feature history, inspect a snapshot in detail, and update linked mood labels.
+- Gives the owner a managed Fitbit integration flow, including OAuth, webhook handling, and secure settings storage.
+- Keeps cleanup and data ownership explicit with transactional request, snapshot, and label deletion rules.
+
+## Product Tour
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/assets/screenshots/dashboard-overview.png" width="220" alt="Dashboard overview" /><br />
+      <strong>Dashboard Overview</strong><br />
+      Daily mood summary, quick metrics, and recent trend context.
+    </td>
+    <td align="center">
+      <img src="docs/assets/screenshots/dashboard-insights.png" width="220" alt="Dashboard insights" /><br />
+      <strong>Mood Insights</strong><br />
+      Trend charts and category balance that stay readable on mobile.
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/assets/screenshots/requests-overview.png" width="220" alt="Requests overview" /><br />
+      <strong>Capture Queue</strong><br />
+      Request summaries and the main snapshot capture flow.
+    </td>
+    <td align="center">
+      <img src="docs/assets/screenshots/requests-activity.png" width="220" alt="Requests activity" /><br />
+      <strong>Recent Activity</strong><br />
+      Lightweight request history with clear actions and status.
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/assets/screenshots/features-history.png" width="220" alt="Features history" /><br />
+      <strong>Feature History</strong><br />
+      Snapshot browsing organized around mood-first context.
+    </td>
+    <td align="center">
+      <img src="docs/assets/screenshots/feature-detail-summary.png" width="220" alt="Feature detail summary" /><br />
+      <strong>Feature Detail</strong><br />
+      Summary-first breakdown of the most useful captured signals.
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/assets/screenshots/feature-detail-sections.png" width="220" alt="Feature detail sections" /><br />
+      <strong>Deep Dive Sections</strong><br />
+      Structured detail cards for drilling into activity, sleep, and recovery values.
+    </td>
+    <td align="center">
+      <img src="docs/assets/screenshots/settings-fitbit-integration.png" width="220" alt="Fitbit integration settings" /><br />
+      <strong>Owner Settings</strong><br />
+      Managed Fitbit connection status and integration configuration.
+    </td>
+  </tr>
+</table>
+
+## Stack
+
+- Frontend: Expo, React Native, React Navigation, TypeScript
+- Backend: FastAPI, SQLAlchemy, PostgreSQL, Alembic
+- Background processing: request fulfillment worker and Fitbit webhook ingestion
+- Integrations: Fitbit OAuth, webhook subscriptions, feature pull orchestration
+- Security: owner-managed integration settings with encrypted secret storage
+
+## Why This Repo Is Interesting
+
+- It is a real full-stack product flow, not just isolated UI or API exercises.
+- The mobile app is organized around actual user workflows: dashboard, requests, feature history, detail views, labeling, and settings.
+- The backend handles non-trivial lifecycle concerns like OAuth, webhook validation, background fulfillment, transactional cascading deletes, and encrypted secret management.
+- The repository is set up to be self-hosted locally with Docker, migrations, and focused test coverage.
+
+## Repository Map
 
 ```text
 mood-platform/
 |- apps/
-|  |- frontend/      # Expo frontend app (scaffold)
-|  `- backend/       # FastAPI backend app (scaffold)
-|- docs/             # architecture and developer docs
-|- scripts/          # repository utility scripts
-|- .env.example
-|- Makefile
-`- README.md
+|  |- frontend/   # Expo React Native client
+|  `- backend/    # FastAPI API, services, repositories, worker
+|- docs/          # organized product, setup, frontend, and backend docs
+|- scripts/       # repository helpers and verification scripts
+|- .env.example   # local environment template
+`- docker-compose.yml
 ```
 
-## Quick Start
+## Run Locally
 
-1. Clone the repository.
-2. Copy environment variables:
-   - `cp .env.example .env` (macOS/Linux)
-   - `Copy-Item .env.example .env` (PowerShell)
-3. Install developer tooling:
-   - `pip install pre-commit`
-   - `npm install`
-   - `pre-commit install`
-4. Start local services:
-   - `docker compose up -d`
-5. Run repository verification:
-   - `make verify`
-   - fallback: `python scripts/verify.py`
+1. Copy the environment template: `Copy-Item .env.example .env`
+2. Start the local stack: `docker compose up --build`
+3. Run migrations if needed: `python -m alembic -c apps/backend/alembic.ini upgrade head`
+4. Launch the Expo app: `npm run --workspace apps/frontend start`
+5. Save Fitbit credentials from `Settings -> Fitbit Integration` if you want to exercise OAuth and webhook flows locally
 
-## Local Development (Docker)
-
-Run the local stack (Postgres, Redis, API, worker):
-
-```bash
-docker compose up --build
-```
-
-Check readiness:
-
-```bash
-curl http://localhost:8000/health/ready
-```
-
-Stop services:
-
-```bash
-docker compose down
-```
-
-Reset services and volumes:
-
-```bash
-docker compose down -v
-```
-
-## Database + Migrations
-
-Canonical migration command (run from repo root):
-
-```bash
-python -m alembic -c apps/backend/alembic.ini upgrade head
-```
-
-Set `DATABASE_URL` before running migrations.
-
-PowerShell example:
-
-```powershell
-$env:DATABASE_URL="postgresql://mood:mood@localhost:5432/mood"
-python -m alembic -c apps/backend/alembic.ini upgrade head
-```
-
-Optional shortcuts via `Makefile`:
-
-```bash
-make db-up
-make migrate
-make migrate-sql
-make revision MSG="describe change"
-make db-down
-```
-
-Fitbit integration now uses database-backed configuration from the Settings screen.
-
-- Save OAuth credentials and webhook secrets through `Settings -> Fitbit Integration`
-- `APP_SECRET_ENCRYPTION_KEY` is required so the backend can encrypt stored client/webhook secrets at rest
-- `FITBIT_WEBHOOK_COALESCE_SECONDS` remains environment-driven
-- legacy Fitbit env vars in `.env.example` are optional and not required for normal runtime operation
-
-Token lifecycle behavior:
-
-- OAuth callback persists Fitbit tokens in `fitbit_tokens`.
-- Access tokens are retrieved through `FitbitTokenService.get_access_token(...)`.
-- Expired tokens refresh proactively and Fitbit `401` responses trigger one refresh retry.
-
-Create a new migration after model changes:
-
-```bash
-python -m alembic -c apps/backend/alembic.ini revision --autogenerate -m "describe change"
-```
-
-If a migration fails:
-
-1. Confirm PostgreSQL is running: `docker compose up -d postgres` (or `make db-up`)
-2. Verify `DATABASE_URL` points to the running database.
-3. Retry migration: `python -m alembic -c apps/backend/alembic.ini upgrade head`
-
-Reset local DB (drop volume data) and reapply migrations:
-
-```bash
-docker compose down -v
-docker compose up -d postgres
-python -m alembic -c apps/backend/alembic.ini upgrade head
-```
+More detailed setup notes live in [docs/getting-started.md](docs/getting-started.md).
 
 ## Documentation
 
-- `docs/README.md`: documentation entry point
-- `apps/frontend/README.md`: frontend scope and responsibilities
-- `apps/backend/README.md`: backend scope and responsibilities
+- [Documentation Index](docs/README.md)
+- [Getting Started](docs/getting-started.md)
+- [Frontend Notes](docs/frontend/README.md)
+- [Backend Notes](docs/backend/README.md)
