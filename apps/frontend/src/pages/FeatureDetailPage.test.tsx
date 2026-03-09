@@ -1,7 +1,7 @@
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import { useIsFocused } from "@react-navigation/native";
 
-import { getFeatureById } from "../api/features";
+import { deleteFeature, getFeatureById } from "../api/features";
 import { createApiError } from "../api/errors";
 import type { RootStackParamList } from "../router/AppRouter";
 import type { FeatureRecord } from "../types/features";
@@ -14,6 +14,7 @@ jest.mock("@react-navigation/native", () => ({
 }));
 
 const mockedGetFeatureById = jest.mocked(getFeatureById);
+const mockedDeleteFeature = jest.mocked(deleteFeature);
 const mockedUseIsFocused = jest.mocked(useIsFocused);
 
 function toSeconds(value: string): number {
@@ -64,7 +65,8 @@ const UNLABELED_FEATURE: FeatureRecord = {
 
 function makeProps(id: string) {
   const navigation = {
-    navigate: jest.fn()
+    navigate: jest.fn(),
+    replace: jest.fn()
   } as never;
 
   return {
@@ -177,6 +179,50 @@ describe("FeatureDetailPage", () => {
     await waitFor(() => {
       expect(getByText(/"id": "feature-detail-1"/)).toBeTruthy();
     });
+  });
+
+  it("deletes a feature snapshot from the confirmation modal and returns to history", async () => {
+    mockedGetFeatureById.mockResolvedValue(DETAIL_FEATURE);
+    mockedDeleteFeature.mockResolvedValue({ id: DETAIL_FEATURE.id });
+    const props = makeProps("feature-detail-1");
+    const { getByTestId, getByText } = render(<FeatureDetailPage {...props} />);
+
+    await waitFor(() => {
+      expect(getByTestId("feature-delete-button")).toBeTruthy();
+    });
+
+    fireEvent.press(getByTestId("feature-delete-button"));
+
+    expect(getByText("Delete Feature Snapshot?")).toBeTruthy();
+    expect(getByText("Any linked mood labels will also be removed.")).toBeTruthy();
+
+    fireEvent.press(getByTestId("confirm-delete-feature-button"));
+
+    await waitFor(() => {
+      expect(mockedDeleteFeature).toHaveBeenCalledWith("feature-detail-1");
+      expect((props.navigation as never as { replace: jest.Mock }).replace).toHaveBeenCalledWith("Features");
+    });
+  });
+
+  it("shows an error when feature deletion fails", async () => {
+    mockedGetFeatureById.mockResolvedValue(DETAIL_FEATURE);
+    mockedDeleteFeature.mockRejectedValue(new Error("Unable to delete feature snapshot. Please try again."));
+    const props = makeProps("feature-detail-1");
+    const { getByTestId, getByText } = render(<FeatureDetailPage {...props} />);
+
+    await waitFor(() => {
+      expect(getByTestId("feature-delete-button")).toBeTruthy();
+    });
+
+    fireEvent.press(getByTestId("feature-delete-button"));
+    fireEvent.press(getByTestId("confirm-delete-feature-button"));
+
+    await waitFor(() => {
+      expect(getByText("Unable to delete feature snapshot")).toBeTruthy();
+      expect(getByText("Unable to delete feature snapshot. Please try again.")).toBeTruthy();
+    });
+
+    expect((props.navigation as never as { replace: jest.Mock }).replace).not.toHaveBeenCalled();
   });
 
   it("renders a not found state when feature id does not resolve", async () => {
