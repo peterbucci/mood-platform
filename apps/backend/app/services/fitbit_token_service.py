@@ -237,7 +237,4 @@ class FitbitTokenService:
 
     def _assert_oauth_configured(self) -> None:
         if not self._settings.FITBIT_CLIENT_ID or not self._settings.FITBIT_CLIENT_SECRET:
-            raise FitbitTokenConfigurationError(
-                "Fitbit token refresh is not configured. Set FITBIT_CLIENT_ID and "
-                "FITBIT_CLIENT_SECRET."
-            )
+            raise FitbitTokenConfigurationError("Fitbit integration not configured.")

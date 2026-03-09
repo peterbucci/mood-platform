@@ -27,6 +27,7 @@ WEBHOOK_URL = "/fitbit/webhook"
 def test_webhook_valid_signature_returns_204(monkeypatch) -> None:
     with _temporary_database() as database_url:
         _run_alembic_upgrade(database_url=database_url)
+        _seed_fitbit_integration_settings(database_url=database_url, webhook_secret=WEBHOOK_SECRET)
         _seed_fitbit_token(
             database_url=database_url,
             user_id=OWNER_USER_ID,
@@ -51,9 +52,37 @@ def test_webhook_valid_signature_returns_204(monkeypatch) -> None:
         db_session._session_factory.cache_clear()
 
 
+def test_webhook_returns_500_when_secret_not_configured(monkeypatch) -> None:
+    with _temporary_database() as database_url:
+        _run_alembic_upgrade(database_url=database_url)
+        _seed_fitbit_token(
+            database_url=database_url,
+            user_id=OWNER_USER_ID,
+            fitbit_user_id=FITBIT_USER_ID,
+        )
+        _configure_runtime_env(monkeypatch=monkeypatch, database_url=database_url)
+
+        raw_body = b'[{"collectionType":"sleep","date":"2026-03-05","ownerId":"fitbit-user-1"}]'
+
+        with TestClient(app) as client:
+            response = client.post(
+                WEBHOOK_URL,
+                content=raw_body,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Fitbit-Signature": "deadbeef",
+                },
+            )
+
+        assert response.status_code == 500
+        assert response.json() == {"detail": "Fitbit integration not configured."}
+        db_session._session_factory.cache_clear()
+
+
 def test_webhook_invalid_signature_returns_403(monkeypatch) -> None:
     with _temporary_database() as database_url:
         _run_alembic_upgrade(database_url=database_url)
+        _seed_fitbit_integration_settings(database_url=database_url, webhook_secret=WEBHOOK_SECRET)
         _seed_fitbit_token(
             database_url=database_url,
             user_id=OWNER_USER_ID,
@@ -82,6 +111,7 @@ def test_webhook_invalid_signature_returns_403(monkeypatch) -> None:
 def test_webhook_missing_signature_returns_401(monkeypatch) -> None:
     with _temporary_database() as database_url:
         _run_alembic_upgrade(database_url=database_url)
+        _seed_fitbit_integration_settings(database_url=database_url, webhook_secret=WEBHOOK_SECRET)
         _seed_fitbit_token(
             database_url=database_url,
             user_id=OWNER_USER_ID,
@@ -106,6 +136,7 @@ def test_webhook_missing_signature_returns_401(monkeypatch) -> None:
 def test_webhook_signature_uses_raw_body_bytes(monkeypatch) -> None:
     with _temporary_database() as database_url:
         _run_alembic_upgrade(database_url=database_url)
+        _seed_fitbit_integration_settings(database_url=database_url, webhook_secret=WEBHOOK_SECRET)
         _seed_fitbit_token(
             database_url=database_url,
             user_id=OWNER_USER_ID,
@@ -138,6 +169,7 @@ def test_webhook_signature_uses_raw_body_bytes(monkeypatch) -> None:
 def test_webhook_duplicate_events_for_same_user_return_204(monkeypatch) -> None:
     with _temporary_database() as database_url:
         _run_alembic_upgrade(database_url=database_url)
+        _seed_fitbit_integration_settings(database_url=database_url, webhook_secret=WEBHOOK_SECRET)
         _seed_fitbit_token(
             database_url=database_url,
             user_id=OWNER_USER_ID,
@@ -229,7 +261,6 @@ def _run_alembic_upgrade(*, database_url: str) -> None:
 
 def _configure_runtime_env(*, monkeypatch, database_url: str) -> None:
     monkeypatch.setenv("DATABASE_URL", database_url)
-    monkeypatch.setenv("FITBIT_WEBHOOK_SECRET", WEBHOOK_SECRET)
     monkeypatch.setenv("FITBIT_WEBHOOK_COALESCE_SECONDS", "10")
     db_session._session_factory.cache_clear()
 
@@ -258,3 +289,19 @@ def _seed_fitbit_token(*, database_url: str, user_id: str, fitbit_user_id: str) 
 
 def _build_signature(*, secret: str, raw_body: bytes) -> str:
     return hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+
+
+def _seed_fitbit_integration_settings(*, database_url: str, webhook_secret: str) -> None:
+    with psycopg.connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO integration_settings (id, fitbit_webhook_secret)
+                VALUES (1, %s)
+                ON CONFLICT (id) DO UPDATE
+                SET fitbit_webhook_secret = EXCLUDED.fitbit_webhook_secret,
+                    updated_at = now()
+                """,
+                (webhook_secret,),
+            )
+        connection.commit()

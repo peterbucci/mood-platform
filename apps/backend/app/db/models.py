@@ -206,6 +206,29 @@ class FitbitToken(Base):
     )
 
 
+class IntegrationSettings(Base):
+    __tablename__ = "integration_settings"
+    __table_args__ = (sa.CheckConstraint("id = 1", name="ck_integration_settings_singleton"),)
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True, server_default=sa.text("1"))
+    fitbit_client_id: Mapped[str | None] = mapped_column(sa.Text)
+    fitbit_client_secret: Mapped[str | None] = mapped_column(sa.Text)
+    fitbit_redirect_uri: Mapped[str | None] = mapped_column(sa.Text)
+    fitbit_oauth_scope: Mapped[str | None] = mapped_column(sa.Text)
+    fitbit_subscriber_id: Mapped[str | None] = mapped_column(sa.Text)
+    fitbit_webhook_secret: Mapped[str | None] = mapped_column(sa.Text)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.text("now()"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.text("now()"),
+    )
+
+
 class WebhookJob(Base):
     __tablename__ = "webhook_jobs"
     __table_args__ = (
