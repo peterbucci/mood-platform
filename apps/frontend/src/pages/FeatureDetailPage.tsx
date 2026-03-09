@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { StyleSheet, Text, View } from "react-native";
 
-import { getFeatureById } from "../api/features";
+import { deleteFeature, getFeatureById } from "../api/features";
 import { isApiError } from "../api/errors";
+import DeleteFeatureButton from "../components/features/DeleteFeatureButton";
+import DeleteFeatureConfirmationModal from "../components/features/DeleteFeatureConfirmationModal";
 import FeatureKeyMetricsCard from "../components/features/FeatureKeyMetricsCard";
 import FeatureMetadataCard from "../components/features/FeatureMetadataCard";
 import FeatureSectionCard from "../components/features/FeatureSectionCard";
@@ -38,6 +40,9 @@ function toTabKey(label: string): string {
 
 export default function FeatureDetailPage({ navigation, route }: FeatureDetailPageProps) {
   const { id, refreshAt } = route.params;
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [feature, setFeature] = useState<FeatureRecord | null>(null);
   const [viewState, setViewState] = useState<DetailViewState>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -107,6 +112,41 @@ export default function FeatureDetailPage({ navigation, route }: FeatureDetailPa
   const handleOpenMoodEditor = useCallback(() => {
     navigation.navigate("FeatureMoodLabel", { id });
   }, [id, navigation]);
+
+  const handleOpenDeleteModal = useCallback(() => {
+    setDeleteErrorMessage(null);
+    setIsDeleteModalVisible(true);
+  }, []);
+
+  const handleCloseDeleteModal = useCallback(() => {
+    if (isDeleting) {
+      return;
+    }
+
+    setDeleteErrorMessage(null);
+    setIsDeleteModalVisible(false);
+  }, [isDeleting]);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!feature) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteErrorMessage(null);
+
+    try {
+      await deleteFeature(feature.id);
+      setIsDeleteModalVisible(false);
+      setIsDeleting(false);
+      navigation.replace("Features");
+    } catch (error) {
+      setDeleteErrorMessage(
+        error instanceof Error ? error.message : "Unable to delete feature snapshot. Please try again."
+      );
+      setIsDeleting(false);
+    }
+  }, [feature, navigation]);
 
   if (viewState === "loading") {
     return <LoadingState message="Loading feature detail..." />;
@@ -194,6 +234,17 @@ export default function FeatureDetailPage({ navigation, route }: FeatureDetailPa
 
       <FeatureMetadataCard metadata={metadata} />
       <RawJsonToggle payload={feature} />
+      <View style={styles.deleteActionRow}>
+        <DeleteFeatureButton disabled={isDeleting} isLoading={isDeleting} onPress={handleOpenDeleteModal} />
+      </View>
+      <DeleteFeatureConfirmationModal
+        errorMessage={deleteErrorMessage}
+        feature={feature}
+        isDeleting={isDeleting}
+        onCancel={handleCloseDeleteModal}
+        onConfirm={() => void handleConfirmDelete()}
+        visible={isDeleteModalVisible}
+      />
     </View>
   );
 }
@@ -230,6 +281,11 @@ const styles = StyleSheet.create({
   headerMetaValue: {
     ...typography.bodyStrong,
     color: colors.textPrimary
+  },
+  deleteActionRow: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: spacing.xs
   },
   headerTime: {
     ...typography.helper,
