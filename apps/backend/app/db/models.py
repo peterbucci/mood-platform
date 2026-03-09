@@ -212,11 +212,11 @@ class IntegrationSettings(Base):
 
     id: Mapped[int] = mapped_column(sa.Integer, primary_key=True, server_default=sa.text("1"))
     fitbit_client_id: Mapped[str | None] = mapped_column(sa.Text)
-    fitbit_client_secret: Mapped[str | None] = mapped_column(sa.Text)
+    fitbit_client_secret_encrypted: Mapped[str | None] = mapped_column(sa.Text)
     fitbit_redirect_uri: Mapped[str | None] = mapped_column(sa.Text)
     fitbit_oauth_scope: Mapped[str | None] = mapped_column(sa.Text)
     fitbit_subscriber_id: Mapped[str | None] = mapped_column(sa.Text)
-    fitbit_webhook_secret: Mapped[str | None] = mapped_column(sa.Text)
+    fitbit_webhook_secret_encrypted: Mapped[str | None] = mapped_column(sa.Text)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=False,

@@ -113,7 +113,10 @@ def get_fitbit_integration_settings_service(
         IntegrationSettingsRepository, Depends(get_integration_settings_repository)
     ],
 ) -> FitbitIntegrationSettingsService:
-    return FitbitIntegrationSettingsService(repository=integration_settings_repository)
+    return FitbitIntegrationSettingsService(
+        repository=integration_settings_repository,
+        encryption_key=get_settings().APP_SECRET_ENCRYPTION_KEY,
+    )
 
 
 def get_fitbit_runtime_settings(

@@ -11,6 +11,7 @@ from pathlib import Path
 import psycopg
 from app.db import session as db_session
 from app.main import app
+from app.services.encryption_service import build_encryption_service
 from fastapi.testclient import TestClient
 from psycopg import sql
 from sqlalchemy.engine import make_url
@@ -22,6 +23,7 @@ OWNER_USER_ID = "00000000-0000-0000-0000-00000000bb01"
 FITBIT_USER_ID = "fitbit-user-1"
 WEBHOOK_SECRET = "test-fitbit-webhook-secret"
 WEBHOOK_URL = "/fitbit/webhook"
+TEST_ENCRYPTION_KEY = "Qv2K-KSS7eDYAf9H2JWzImrxNr7AWyP3w7k3TKTKuig="
 
 
 def test_webhook_valid_signature_returns_204(monkeypatch) -> None:
@@ -243,6 +245,7 @@ class _temporary_database:
 def _run_alembic_upgrade(*, database_url: str) -> None:
     env = os.environ.copy()
     env["DATABASE_URL"] = database_url
+    env["APP_SECRET_ENCRYPTION_KEY"] = TEST_ENCRYPTION_KEY
     subprocess.run(
         [
             sys.executable,
@@ -261,6 +264,7 @@ def _run_alembic_upgrade(*, database_url: str) -> None:
 
 def _configure_runtime_env(*, monkeypatch, database_url: str) -> None:
     monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("APP_SECRET_ENCRYPTION_KEY", TEST_ENCRYPTION_KEY)
     monkeypatch.setenv("FITBIT_WEBHOOK_COALESCE_SECONDS", "10")
     db_session._session_factory.cache_clear()
 
@@ -292,16 +296,17 @@ def _build_signature(*, secret: str, raw_body: bytes) -> str:
 
 
 def _seed_fitbit_integration_settings(*, database_url: str, webhook_secret: str) -> None:
+    encryption_service = build_encryption_service(TEST_ENCRYPTION_KEY)
     with psycopg.connect(database_url) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO integration_settings (id, fitbit_webhook_secret)
+                INSERT INTO integration_settings (id, fitbit_webhook_secret_encrypted)
                 VALUES (1, %s)
                 ON CONFLICT (id) DO UPDATE
-                SET fitbit_webhook_secret = EXCLUDED.fitbit_webhook_secret,
+                SET fitbit_webhook_secret_encrypted = EXCLUDED.fitbit_webhook_secret_encrypted,
                     updated_at = now()
                 """,
-                (webhook_secret,),
+                (encryption_service.encrypt_value(webhook_secret),),
             )
         connection.commit()

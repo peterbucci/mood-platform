@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlparse
 import psycopg
 from app.db import session as db_session
 from app.main import app
+from app.services.encryption_service import build_encryption_service
 from app.services.fitbit_oauth_service import FitbitOAuthService
 from fastapi.testclient import TestClient
 from psycopg import sql
@@ -18,6 +19,7 @@ from sqlalchemy.engine import make_url
 ROOT_DIR = Path(__file__).resolve().parents[3]
 ALEMBIC_CONFIG = ROOT_DIR / "apps" / "backend" / "alembic.ini"
 OWNER_USER_ID = "00000000-0000-0000-0000-00000000fa01"
+TEST_ENCRYPTION_KEY = "Qv2K-KSS7eDYAf9H2JWzImrxNr7AWyP3w7k3TKTKuig="
 
 
 def test_fitbit_oauth_start_redirects_to_fitbit(monkeypatch) -> None:
@@ -275,6 +277,7 @@ class _temporary_database:
 def _run_alembic_upgrade(*, database_url: str) -> None:
     env = os.environ.copy()
     env["DATABASE_URL"] = database_url
+    env["APP_SECRET_ENCRYPTION_KEY"] = TEST_ENCRYPTION_KEY
     subprocess.run(
         [
             sys.executable,
@@ -293,11 +296,13 @@ def _run_alembic_upgrade(*, database_url: str) -> None:
 
 def _configure_runtime_env(*, monkeypatch, database_url: str) -> None:
     monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("APP_SECRET_ENCRYPTION_KEY", TEST_ENCRYPTION_KEY)
     monkeypatch.setenv("OWNER_USER_ID", OWNER_USER_ID)
     db_session._session_factory.cache_clear()
 
 
 def _seed_fitbit_integration_settings(*, database_url: str) -> None:
+    encryption_service = build_encryption_service(TEST_ENCRYPTION_KEY)
     with psycopg.connect(database_url) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -305,21 +310,21 @@ def _seed_fitbit_integration_settings(*, database_url: str) -> None:
                 INSERT INTO integration_settings (
                     id,
                     fitbit_client_id,
-                    fitbit_client_secret,
+                    fitbit_client_secret_encrypted,
                     fitbit_redirect_uri,
                     fitbit_oauth_scope
                 )
                 VALUES (1, %s, %s, %s, %s)
                 ON CONFLICT (id) DO UPDATE
                 SET fitbit_client_id = EXCLUDED.fitbit_client_id,
-                    fitbit_client_secret = EXCLUDED.fitbit_client_secret,
+                    fitbit_client_secret_encrypted = EXCLUDED.fitbit_client_secret_encrypted,
                     fitbit_redirect_uri = EXCLUDED.fitbit_redirect_uri,
                     fitbit_oauth_scope = EXCLUDED.fitbit_oauth_scope,
                     updated_at = now()
                 """,
                 (
                     "test-fitbit-client-id",
-                    "test-fitbit-client-secret",
+                    encryption_service.encrypt_value("test-fitbit-client-secret"),
                     "http://localhost:8000/fitbit/oauth/callback",
                     "sleep heartrate activity profile",
                 ),
